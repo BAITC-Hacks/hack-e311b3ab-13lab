@@ -35,6 +35,8 @@ def make_settings(directory, **overrides):
         api_key="test",
         max_upload_bytes=32,
         diarization_model_path="",
+        diarization_url="",
+        diarization_token="",
         database_url="",
         minio_endpoint="",
         admin_email="",

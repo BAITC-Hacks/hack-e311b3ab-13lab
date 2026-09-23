@@ -145,7 +145,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
 
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "provider_configured": bool(settings.api_key), "diarization_configured": bool(settings.diarization_model_path), "pdf_configured": bool(fonts)}
+        return {"status": "ok", "provider_configured": bool(settings.api_key), "diarization_configured": bool(settings.diarization_url or settings.diarization_model_path), "pdf_configured": bool(fonts)}
 
     @app.post("/api/auth/login")
     async def login(payload: LoginRequest, request: Request):
@@ -264,7 +264,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
                 "storage": blobs.kind,
                 "provider_configured": bool(settings.api_key),
                 "pdf_configured": bool(fonts),
-                "diarization_configured": bool(settings.diarization_model_path),
+                "diarization_configured": bool(settings.diarization_url or settings.diarization_model_path),
                 "registration_mode": registration_mode,
                 "migrations": store.migration_history(),
             },

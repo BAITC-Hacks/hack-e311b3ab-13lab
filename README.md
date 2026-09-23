@@ -232,3 +232,9 @@ python -m scripts.smoke /path/to/meeting.mp3 --meeting-date 2026-09-23
 
 ## Test commit
 This line verifies GitHub connector commits.
+
+## Диаризация на отдельном GPU
+
+Для pyannote Community-1 на H200 задайте `DIARIZATION_URL` и `DIARIZATION_TOKEN`.
+Подключение, приватный SSH-туннель и запуск с Docker описаны в [docs/H200.md](docs/H200.md).
+LLM-извлечение и повторная проверка поручений остаются без изменений.

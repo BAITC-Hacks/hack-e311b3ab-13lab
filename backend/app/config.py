@@ -17,6 +17,8 @@ class Settings:
     max_upload_bytes: int
     timeout: float
     diarization_model_path: str
+    diarization_url: str = ""
+    diarization_token: str = ""
     database_url: str = ""
     minio_endpoint: str = ""
     minio_access_key: str = ""
@@ -42,6 +44,8 @@ class Settings:
             max_upload_bytes=int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024,
             timeout=float(os.getenv("API_TIMEOUT_SECONDS", "900")),
             diarization_model_path=os.getenv("DIARIZATION_MODEL_PATH", ""),
+            diarization_url=os.getenv("DIARIZATION_URL", "").rstrip("/"),
+            diarization_token=os.getenv("DIARIZATION_TOKEN", ""),
             database_url=os.getenv("DATABASE_URL", ""),
             minio_endpoint=os.getenv("MINIO_ENDPOINT", ""),
             minio_access_key=os.getenv("MINIO_ACCESS_KEY", ""),

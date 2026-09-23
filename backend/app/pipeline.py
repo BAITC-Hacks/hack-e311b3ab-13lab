@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 
 from app.deadlines import ground_deadlines
+from app.diarization import Turn, align_speakers, remote_diarize
 from app.models import Analysis, Segment, Word
 from app.store import audio_key
 
@@ -24,10 +25,10 @@ def make_segments(text: str, words: list[Word]):
     for word in words:
         group.append(word)
         if word.word.endswith((".", "!", "?")) or len(group) >= 45:
-            segments.append(Segment(id=f"s{len(segments) + 1}", text=" ".join(item.word for item in group), start=group[0].start, end=group[-1].end))
+            segments.append(Segment(id=f"s{len(segments) + 1}", text=" ".join(item.word for item in group), start=group[0].start, end=group[-1].end, words=list(group)))
             group = []
     if group:
-        segments.append(Segment(id=f"s{len(segments) + 1}", text=" ".join(item.word for item in group), start=group[0].start, end=group[-1].end))
+        segments.append(Segment(id=f"s{len(segments) + 1}", text=" ".join(item.word for item in group), start=group[0].start, end=group[-1].end, words=list(group)))
     return segments
 
 
@@ -115,7 +116,7 @@ class Provider:
             batches.append(batch)
         results = []
         for chunk in batches:
-            payload = {"meeting_date": meeting_date, "title": title, "segments": [segment.model_dump() for segment in chunk]}
+            payload = {"meeting_date": meeting_date, "title": title, "segments": [segment.model_dump(exclude={"words", "speaker_uncertain"}) for segment in chunk]}
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT + json.dumps(Analysis.model_json_schema(), ensure_ascii=False)},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
@@ -150,16 +151,9 @@ def diarize(path, segments, model_path):
     pipeline = Pipeline.from_pretrained(model_path)
     result = pipeline(str(path))
     annotation = getattr(result, "exclusive_speaker_diarization", getattr(result, "speaker_diarization", result))
-    turns = [(turn.start, turn.end, speaker) for turn, _, speaker in annotation.itertracks(yield_label=True)]
-    for segment in segments:
-        if segment.start is None or segment.end is None:
-            continue
-        overlaps = [(max(0, min(segment.end, end) - max(segment.start, start)), speaker) for start, end, speaker in turns]
-        if overlaps:
-            overlap, speaker = max(overlaps)
-            if overlap > 0:
-                segment.speaker = speaker
-    return segments
+    turns = [Turn(start=turn.start, end=turn.end, speaker_id=speaker)
+             for turn, _, speaker in annotation.itertracks(yield_label=True)]
+    return align_speakers(segments, turns)
 
 
 async def run_pipeline(meeting_id, store, settings, provider, semaphore, blobs):
@@ -169,15 +163,31 @@ async def run_pipeline(meeting_id, store, settings, provider, semaphore, blobs):
             return
         path = None
         try:
-            store.update(meeting_id, {"status": "transcribing", "error": None})
+            store.update(meeting_id, {"error": None})
             path = await asyncio.to_thread(blobs.checkout, audio_key(meeting))
-            transcript, segments = await provider.transcribe(path)
-            store.update(meeting_id, {"transcript": transcript, "segments": [segment.model_dump() for segment in segments], "status": "diarizing"})
+            if meeting.get("asr_segments"):
+                segments = [Segment.model_validate(item) for item in meeting["asr_segments"]]
+            else:
+                store.update(meeting_id, {"status": "transcribing"})
+                transcript, segments = await provider.transcribe(path)
+                store.update(meeting_id, {"transcript": transcript,
+                    "asr_segments": [segment.model_dump() for segment in segments]})
+            store.update(meeting_id, {"segments": [segment.model_dump() for segment in segments], "status": "diarizing"})
             warnings = []
-            if settings.diarization_model_path:
+            if settings.diarization_url:
+                if meeting.get("diarization") and meeting.get("diarized_segments"):
+                    segments = [Segment.model_validate(item) for item in meeting["diarized_segments"]]
+                else:
+                    segments, metadata = await remote_diarize(path, segments, settings)
+                    store.update(meeting_id, {"diarization": metadata,
+                        "diarized_segments": [segment.model_dump() for segment in segments]})
+            elif settings.diarization_model_path:
                 segments = await asyncio.to_thread(diarize, path, segments, settings.diarization_model_path)
             else:
                 warnings.append("Диаризация не настроена. Говорящие не определены; исполнители извлечены из содержания речи.")
+            uncertain = sum(segment.speaker_uncertain for segment in segments)
+            if uncertain:
+                warnings.append(f"Говорящий требует проверки в {uncertain} фрагментах. Прослушайте их перед назначением имён.")
             store.update(meeting_id, {"segments": [segment.model_dump() for segment in segments], "status": "analyzing"})
             analysis = await provider.analyze(segments, meeting["meeting_date"], meeting["title"])
             analysis.warnings.extend(warnings)

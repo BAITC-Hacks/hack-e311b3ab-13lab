@@ -64,6 +64,7 @@ export function TranscriptPanel({ meetingId, canListen, segments, speakerNames, 
 
       {speakers.length > 0 && (
         <div className="mt-4 space-y-2">
+          <p className="text-xs text-ink-muted">Голосов: {speakers.length}. Сопоставьте голоса с именами по записи.</p>
           {speakers.map((speaker) =>
             editableSpeakers ? (
               <Field key={speaker} label={`Имя для «${speaker}»`}>
@@ -85,6 +86,7 @@ export function TranscriptPanel({ meetingId, canListen, segments, speakerNames, 
               )}
               {segment.start !== null && !canListen && <span className="font-mono text-[11px] text-ink-soft">{formatTimestamp(segment.start)}</span>}
               <strong className="text-xs text-lime-700">{(segment.speaker && speakerNames[segment.speaker]) || segment.speaker || 'Говорящий не определён'}</strong>
+              {segment.speaker_uncertain && <span className="text-xs text-amber-700">Проверьте по аудио</span>}
             </div>
             <p>{segment.text}</p>
           </div>

@@ -63,6 +63,7 @@ export interface Segment {
   start: number | null
   end: number | null
   speaker: string | null
+  speaker_uncertain?: boolean
 }
 
 export interface Approval {

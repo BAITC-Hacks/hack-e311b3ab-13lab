@@ -1,0 +1,5 @@
+pyannote.audio==4.0.7
+fastapi==0.141.1
+uvicorn==0.53.0
+python-multipart==0.0.32
+soundfile==0.14.0

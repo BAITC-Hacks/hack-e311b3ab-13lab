@@ -31,6 +31,8 @@ class Segment(BaseModel):
     start: float | None = None
     end: float | None = None
     speaker: str | None = None
+    speaker_uncertain: bool = False
+    words: list[Word] = Field(default_factory=list)
 
 
 class Action(BaseModel):
