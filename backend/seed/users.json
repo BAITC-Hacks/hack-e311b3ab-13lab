@@ -1,0 +1,10 @@
+{
+  "_comment": "Shared team accounts, created by `python -m scripts.migrate` when missing. Passwords come from SEED_PASSWORD; existing accounts are never changed.",
+  "users": [
+    {
+      "email": "team@hattama.local",
+      "name": "Команда 13Lab",
+      "role": "secretary"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ from app.models import ACTIVE_STATUSES, REVIEWABLE_STATUSES, ActionUpdate, Appro
 from app.pipeline import Provider, run_pipeline
 from app.rbac import ROLE_LABELS, MeetingPermission as MP, Permission, Role, assignee_ids, current_user, meeting_permissions, require, role_permissions
 from app.security import DUMMY_HASH, verify_password
+from app.seed import bootstrap_admin
 from app.store import Store, audio_key, new_meeting, now
 
 logger = logging.getLogger("hattama")
@@ -72,21 +73,11 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
     semaphore = asyncio.Semaphore(1)
     throttle = LoginThrottle()
 
-    def bootstrap_admin():
-        if store.count_users(Role.ADMIN):
-            return
-        if settings.admin_email and settings.admin_password:
-            user = store.create_user(settings.admin_email, settings.admin_name, Role.ADMIN, settings.admin_password)
-            store.audit("user_created", meeting_id=None, email=user["email"], role=user["role"], source="bootstrap")
-            logger.warning("Создан администратор %s из ADMIN_EMAIL/ADMIN_PASSWORD", user["email"])
-        else:
-            logger.warning("Нет активного администратора. Задайте ADMIN_EMAIL и ADMIN_PASSWORD или выполните python -m scripts.create_user")
-
     @asynccontextmanager
     async def lifespan(application):
         await asyncio.to_thread(blobs.prepare)
         store.mark_interrupted(INTERRUPTED)
-        bootstrap_admin()
+        bootstrap_admin(store, settings)
         yield
         for task in tasks:
             task.cancel()

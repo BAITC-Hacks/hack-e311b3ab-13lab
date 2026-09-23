@@ -8,86 +8,16 @@ also kept as columns for filtering and optimistic concurrency.
 import json
 import time
 import uuid
-from datetime import datetime, timezone
 
-from sqlalchemy import (
-    JSON,
-    Boolean,
-    Column,
-    ForeignKey,
-    Integer,
-    MetaData,
-    String,
-    Table,
-    create_engine,
-    delete,
-    event,
-    func,
-    insert,
-    inspect,
-    select,
-    text,
-    update,
-)
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, delete, event, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
+from app.migrations import migrate
 from app.models import ACTIVE_STATUSES
+from app.schema import PUBLIC_USER_FIELDS, audit_log, meeting_columns, meetings, metadata, now, sessions, users
 from app.security import hash_password, new_token, token_digest
 
-
-def now():
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
-
-
-metadata = MetaData()
-Document = JSON().with_variant(JSONB(), "postgresql")
-
-users = Table(
-    "users",
-    metadata,
-    Column("id", String(32), primary_key=True),
-    Column("email", String(254), nullable=False, unique=True),
-    Column("name", String(200), nullable=False),
-    Column("role", String(20), nullable=False),
-    Column("password_hash", String(300), nullable=False),
-    Column("active", Boolean, nullable=False, default=True),
-    Column("created_at", String(40), nullable=False),
-)
-
-sessions = Table(
-    "sessions",
-    metadata,
-    Column("token_hash", String(64), primary_key=True),
-    Column("user_id", String(32), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
-    Column("expires_at", Integer, nullable=False),
-    Column("created_at", String(40), nullable=False),
-)
-
-meetings = Table(
-    "meetings",
-    metadata,
-    Column("id", String(32), primary_key=True),
-    Column("version", Integer, nullable=False),
-    Column("status", String(20), nullable=False, index=True),
-    Column("created_by", String(32), nullable=True),
-    Column("created_at", String(40), nullable=False, index=True),
-    Column("body", Document, nullable=False),
-)
-
-audit_log = Table(
-    "audit_log",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("at", String(40), nullable=False, index=True),
-    Column("user_id", String(32), nullable=True),
-    Column("user_email", String(254), nullable=True),
-    Column("action", String(60), nullable=False),
-    Column("meeting_id", String(32), nullable=True, index=True),
-    Column("detail", Document, nullable=False),
-)
-
-PUBLIC_USER_FIELDS = ("id", "email", "name", "role", "active", "created_at")
+__all__ = ["Store", "audio_key", "database_url", "make_engine", "metadata", "new_meeting", "now"]
 
 
 def database_url(settings):
@@ -148,17 +78,6 @@ def audio_key(meeting):
     return meeting.get("audio_key") or f"audio/{meeting['audio_file']}"
 
 
-def _columns(meeting):
-    return {
-        "id": meeting["id"],
-        "version": meeting["version"],
-        "status": meeting["status"],
-        "created_by": meeting.get("created_by"),
-        "created_at": meeting["created_at"],
-        "body": meeting,
-    }
-
-
 def _public_user(row):
     return {field: row._mapping[field] for field in PUBLIC_USER_FIELDS}
 
@@ -169,33 +88,13 @@ class Store:
         self.engine = make_engine(settings)
         self.backend = self.engine.dialect.name
         self.session_seconds = int(settings.session_hours * 3600)
-        with self.engine.begin() as connection:
-            self._migrate_legacy(connection)
-            metadata.create_all(connection)
-
-    def _migrate_legacy(self, connection):
-        """Move rows from the MVP table `meetings(id, body)` into the new schema."""
-        inspector = inspect(connection)
-        if "meetings" not in inspector.get_table_names():
-            return
-        if "version" in {column["name"] for column in inspector.get_columns("meetings")}:
-            return
-        connection.execute(text("ALTER TABLE meetings RENAME TO meetings_legacy"))
-        rows = connection.execute(text("SELECT body FROM meetings_legacy")).fetchall()
-        metadata.create_all(connection)
-        for (body,) in rows:
-            meeting = json.loads(body) if isinstance(body, str) else body
-            meeting.setdefault("created_by", None)
-            meeting.setdefault("chair_id", None)
-            meeting.setdefault("participant_ids", [])
-            meeting.setdefault("approvals", [])
-            connection.execute(insert(meetings).values(**_columns(meeting)))
+        self.applied_migrations = migrate(self.engine)
 
     # Meetings
 
     def create(self, meeting):
         with self.engine.begin() as connection:
-            connection.execute(insert(meetings).values(**_columns(meeting)))
+            connection.execute(insert(meetings).values(**meeting_columns(meeting)))
 
     def get(self, meeting_id):
         with self.engine.connect() as connection:
