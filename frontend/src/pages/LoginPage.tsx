@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { useRegistrationMode } from '../api/queries'
 import { useAuth } from '../auth/context'
-import { AuthLayout } from '../components/AuthLayout'
+import { LandingPage } from '../components/LandingPage'
 import { Button, Field, Input, Notice } from '../components/ui'
 
 export function LoginPage() {
@@ -36,15 +36,15 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout>
+    <LandingPage>
         <form onSubmit={submit} className="space-y-5" aria-label="Вход">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Вход в рабочее пространство</h2>
+            <h2 className="text-2xl font-semibold tracking-tight">Добро пожаловать</h2>
             <p className="mt-1 text-sm text-ink-muted">Войдите учётной записью, выданной администратором, или зарегистрируйтесь.</p>
           </div>
           {expired && <Notice tone="info">Сессия завершена. Войдите снова.</Notice>}
           <Field label="Email">
-            <Input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} autoFocus />
+            <Input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} />
           </Field>
           <Field label="Пароль">
             <Input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
@@ -62,6 +62,6 @@ export function LoginPage() {
             </p>
           )}
         </form>
-    </AuthLayout>
+    </LandingPage>
   )
 }

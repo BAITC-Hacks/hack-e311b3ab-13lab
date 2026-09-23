@@ -156,7 +156,14 @@ export type RegistrationMode = 'approval' | 'open' | 'closed'
 
 export type RegistrationResponse = { status: 'pending' } | { status: 'active'; token: string; expires_at: number; user: User }
 
+export interface AdminMetrics {
+  timezone: string
+  daily_uploads: Array<{ date: string; count: number }>
+  actions: { total: number; open: number; in_progress: number; done: number; needs_review: number }
+}
+
 export interface AdminOverview {
+  metrics?: AdminMetrics
   users: { total: number; active: number; pending: number; disabled: number; by_role: Record<Role, number> }
   meetings: { total: number; by_status: Partial<Record<MeetingStatus, number>> }
   system: {

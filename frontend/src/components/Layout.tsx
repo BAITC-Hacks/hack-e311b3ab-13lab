@@ -5,6 +5,7 @@ import { NavLink, Outlet } from 'react-router'
 import { useHealth } from '../api/queries'
 import type { GlobalPermission } from '../api/types'
 import { useAuth } from '../auth/context'
+import { Brand } from './Brand'
 import { PasswordDialog } from './PasswordDialog'
 
 interface NavItem {
@@ -24,13 +25,7 @@ const NAV: NavItem[] = [
   { to: '/audit', label: 'Журнал действий', icon: ScrollText, permission: 'audit:read' },
 ]
 
-export function Brand({ className }: { className?: string }) {
-  return (
-    <span className={clsx('text-3xl font-extrabold tracking-tighter', className)}>
-      HATTAMA<span className="text-lime-300">.AI</span>
-    </span>
-  )
-}
+export { Brand } from './Brand'
 
 export function Layout() {
   const { user, can, logout } = useAuth()
@@ -46,7 +41,7 @@ export function Layout() {
           <NavLink to="/" className="text-white" onClick={() => setMenuOpen(false)}>
             <Brand />
           </NavLink>
-          <p className="mt-2 hidden text-[10px] font-semibold tracking-[0.2em] text-forest-200 lg:block">MEETING INTELLIGENCE · 13LAB</p>
+          <p className="mt-2 hidden text-[10px] font-semibold tracking-[0.2em] text-forest-200 lg:block">ПРОТОКОЛЫ И ПОРУЧЕНИЯ</p>
           <button type="button" className="rounded-lg p-2 text-forest-100 hover:bg-forest-800 lg:hidden" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? 'Закрыть меню' : 'Открыть меню'} aria-expanded={menuOpen}>
             {menuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
@@ -85,14 +80,14 @@ export function Layout() {
         </div>
       </aside>
       <div className="min-w-0 flex-1 lg:ml-64">
-        <header className="flex h-16 items-center justify-end border-b border-sand-200 px-4 sm:px-8">
+        <header className="flex h-12 items-center justify-end border-b border-sand-200 px-4 sm:px-8">
           {health.data && (
             <span className={clsx('rounded-full px-3 py-1.5 text-xs', health.data.provider_configured ? 'bg-lime-100 text-lime-700' : 'bg-amber-50 text-amber-800')}>
-              {health.data.provider_configured ? '● Сервис моделей настроен' : '○ Ключ сервиса моделей не задан'}
+              {health.data.provider_configured ? '● Готово к работе' : '○ Ключ сервиса моделей не задан'}
             </span>
           )}
         </header>
-        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-8 sm:py-7">
           <Outlet />
         </main>
       </div>

@@ -8,6 +8,8 @@ also kept as columns for filtering and optimistic concurrency.
 import json
 import time
 import uuid
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, delete, event, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
@@ -219,6 +221,33 @@ class Store:
     def meeting_counts(self):
         with self.engine.connect() as connection:
             return dict(connection.execute(select(meetings.c.status, func.count()).group_by(meetings.c.status)).fetchall())
+
+    def dashboard_metrics(self, at=None):
+        """Only aggregate metadata leaves this method; no transcript, titles or owners."""
+        zone = ZoneInfo("Asia/Almaty")
+        today = (at or datetime.now(zone)).astimezone(zone).date()
+        daily = {(today - timedelta(days=offset)).isoformat(): 0 for offset in range(29, -1, -1)}
+        actions = {"total": 0, "open": 0, "in_progress": 0, "done": 0, "needs_review": 0}
+        with self.engine.connect() as connection:
+            # Extract just the action array, never the audio or transcript.
+            rows = connection.execute(select(meetings.c.created_at, meetings.c.status, meetings.c.body["analysis"]["actions"])).fetchall()
+        for created_at, status, items in rows:
+            created = datetime.fromisoformat(created_at)
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=ZoneInfo("UTC"))
+            day = created.astimezone(zone).date().isoformat()
+            if day in daily:
+                daily[day] += 1
+            if status not in {"ready", "approved"}:
+                continue
+            for item in items or []:
+                actions["total"] += 1
+                state = item.get("status", "open")
+                if state in {"open", "in_progress", "done"}:
+                    actions[state] += 1
+                if item.get("needs_review", False):
+                    actions["needs_review"] += 1
+        return {"timezone": "Asia/Almaty", "daily_uploads": [{"date": day, "count": count} for day, count in daily.items()], "actions": actions}
 
     def update_user(self, user_id, name=None, role=None, active=None, password=None):
         values = {}

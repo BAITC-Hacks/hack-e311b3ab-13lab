@@ -73,7 +73,7 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
       <div className="mt-4 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-[11px] font-bold tracking-[0.18em] text-lime-700 uppercase">{formatDate(meeting.meeting_date)}</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-balance">{meeting.title}</h1>
+          <h1 className="mt-2 max-w-3xl text-2xl font-semibold tracking-tight text-balance sm:text-3xl">{meeting.title}</h1>
           <p className="mt-2 text-sm text-ink-muted">
             {creator && `Загрузил: ${creator}`}
             {creator && chair && ' · '}
@@ -88,7 +88,7 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
             </Link>
           )}
           {can('delete') && !active && (
-            <Button size="sm" variant="danger" icon={<Trash2 className="size-3.5" />} onClick={() => setConfirmDelete(true)}>
+            <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={() => setConfirmDelete(true)}>
               Удалить
             </Button>
           )}
@@ -120,7 +120,7 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
         </Card>
       )}
 
-      {can('read') && ['ready', 'approved'].includes(meeting.status) && meeting.analysis && <MeetingWorkspace meeting={meeting} />}
+      {can('read') && ['ready', 'approved'].includes(meeting.status) && meeting.analysis && <MeetingWorkspace key={meeting.id} meeting={meeting} />}
 
       <ConfirmDialog open={confirmDelete} danger title="Удалить совещание?" confirmLabel="Удалить навсегда" loading={remove.isPending} onConfirm={() => remove.mutate()} onClose={() => setConfirmDelete(false)}>
         Будут удалены запись, транскрипт, протокол и сохранённые утверждённые копии. Действие нельзя отменить; в журнале останется запись об удалении.

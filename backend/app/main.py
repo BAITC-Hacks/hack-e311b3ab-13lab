@@ -262,6 +262,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
                 "by_role": {role: sum(item["count"] for item in counts if item["role"] == role and item["active"]) for role in Role},
             },
             "meetings": {"total": sum(by_status.values()), "by_status": by_status},
+            "metrics": store.dashboard_metrics(),
             "system": {
                 "database": store.backend,
                 "storage": blobs.kind,
