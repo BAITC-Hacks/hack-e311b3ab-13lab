@@ -44,6 +44,16 @@ def resolve_deadline(value: str | None, meeting_date: str):
         return anchor + timedelta(days=14)
     if re.search(r"(?:через|за)\s+(?:одну\s+|1\s+)?неделю", phrase):
         return anchor + timedelta(days=7)
+    duration = re.search(r"(?:через|за|максимум)\s+(\d+|десять|три|пять)\s+дн", phrase)
+    if duration:
+        numbers = {"десять": 10, "три": 3, "пять": 5}
+        days = int(duration[1]) if duration[1].isdigit() else numbers[duration[1]]
+        return anchor + timedelta(days=days) if days <= 366 else None
+    kazakh_duration = re.search(r"\b(\d+|екі|бір)\s+(күн|апта)(?:нен|дан|ден|тан)?\s+кейін\b", phrase)
+    if kazakh_duration:
+        amount = int(kazakh_duration[1]) if kazakh_duration[1].isdigit() else {"екі": 2, "бір": 1}[kazakh_duration[1]]
+        days = amount * (7 if kazakh_duration[2] == "апта" else 1)
+        return anchor + timedelta(days=days) if days <= 366 else None
     weekdays = {"понедельник": 0, "вторник": 1, "сред": 2, "четверг": 3, "пятниц": 4, "суббот": 5, "воскресень": 6}
     for prefix, weekday in weekdays.items():
         if re.search(r"\b" + prefix, phrase):
@@ -55,7 +65,26 @@ def resolve_deadline(value: str | None, meeting_date: str):
 
 def ground_deadlines(analysis, meeting_date):
     for action in analysis.actions:
+        if not action.deadline_text:
+            event = re.search(r"\bпо итогам (?:этого )?совещания(?: с подрядчиками)?\b", action.evidence, re.IGNORECASE)
+            if event:
+                action.deadline_text = event.group()
+        if action.deadline_resolution == "uncertain" or (action.deadline_text and re.search(r"(?:мне\s+)?больше недели", action.deadline_text, re.IGNORECASE)):
+            action.deadline_resolution = "uncertain"
+            action.due_date = None
+            action.needs_review = True
+            continue
+        if action.deadline_resolution == "conflict":
+            action.due_date = None
+            analysis.warnings.append(f"Противоречивый срок — проверьте варианты и источники: {action.title}")
+            continue
+        if action.deadline_text and re.search(r"\b(?:после\s+(?:совещания|встречи|согласования|завершения|получения)|по\s+итогам\s+(?:этого\s+)?совещания)\b", action.deadline_text, re.IGNORECASE):
+            action.deadline_resolution = "event"
+            action.due_date = None
+            continue
         action.due_date = resolve_deadline(action.deadline_text, meeting_date)
+        action.deadline_resolution = "resolved" if action.due_date else "ambiguous" if action.deadline_text else "unspecified"
         if action.deadline_text and action.due_date is None:
             analysis.warnings.append(f"Уточните календарную дату: «{action.deadline_text}» — {action.title}")
+    analysis.warnings = list(dict.fromkeys(analysis.warnings))
     return analysis

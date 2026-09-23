@@ -32,6 +32,11 @@ class Settings:
     pdf_font_path: str = ""
     pdf_font_bold_path: str = ""
     registration_mode: str = "approval"
+    text_base_url: str = ""
+    text_api_key: str = ""
+    text_enable_thinking: bool | None = None
+    text_max_tokens: int = 12000
+    text_chunk_chars: int = 16000
 
     @classmethod
     def from_env(cls):
@@ -59,4 +64,9 @@ class Settings:
             pdf_font_path=os.getenv("PDF_FONT_PATH", ""),
             pdf_font_bold_path=os.getenv("PDF_FONT_BOLD_PATH", ""),
             registration_mode=os.getenv("REGISTRATION_MODE", "approval").strip().lower(),
+            text_base_url=os.getenv("TEXT_BASE_URL", "").rstrip("/"),
+            text_api_key=os.getenv("TEXT_API_KEY", ""),
+            text_enable_thinking=None if not os.getenv("TEXT_ENABLE_THINKING", "") else _flag("TEXT_ENABLE_THINKING"),
+            text_max_tokens=int(os.getenv("TEXT_MAX_TOKENS", "12000")),
+            text_chunk_chars=int(os.getenv("TEXT_CHUNK_CHARS", "16000")),
         )

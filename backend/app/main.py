@@ -20,6 +20,9 @@ from app.rbac import ROLE_LABELS, MeetingPermission as MP, Permission, Role, ass
 from app.security import DUMMY_HASH, verify_password
 from app.seed import bootstrap_admin
 from app.store import Store, audio_key, new_meeting, now
+from app.source_review import Glossary, SourceReview, suggestions, validate_source_review
+from app.models import Segment
+from app.quality import numeric_fragments
 
 logger = logging.getLogger("hattama")
 
@@ -27,7 +30,7 @@ AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".mp4"}
 REGISTRATION_MODES = {"approval", "open", "closed"}
 INTERRUPTED = "Обработка прервана перезапуском сервера. Нажмите «Повторить»."
 SUMMARY_FIELDS = ("id", "title", "meeting_date", "status", "created_at", "updated_at", "version", "error", "created_by", "chair_id", "participant_ids", "approved_at", "approved_by")
-CONTENT_FIELDS = ("transcript", "segments", "analysis", "speaker_names")
+CONTENT_FIELDS = ("transcript", "segments", "analysis", "speaker_names", "source_review")
 CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 
 
@@ -376,6 +379,13 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
         schedule(meeting_id)
         return present(result, permissions)
 
+    @app.post("/api/meetings/{meeting_id}/source-suggestions")
+    async def source_suggestions(meeting_id: str, payload: Glossary, user=Depends(current_user)):
+        meeting, _ = load(meeting_id, user, MP.EDIT)
+        if any(not term.strip() or len(term) > 200 for term in payload.terms):
+            raise HTTPException(422, "Термин должен содержать от 1 до 200 символов")
+        return suggestions(meeting.get("segments") or [], payload.terms)
+
     @app.put("/api/meetings/{meeting_id}/review")
     async def review(meeting_id: str, payload: Review, user=Depends(current_user)):
         meeting, permissions = load(meeting_id, user, MP.EDIT)
@@ -390,8 +400,14 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
             seen.add(action.id)
             if action.assignee_id:
                 active_user(action.assignee_id, f"Исполнитель для «{action.title[:60]}» не найден или отключён")
+        source_review = payload.source_review or SourceReview.model_validate(meeting.get("source_review") or {})
+        payload.analysis.numeric_fragments = numeric_fragments([Segment.model_validate(segment) for segment in meeting.get("segments") or []], payload.analysis.summary)
         try:
-            result = store.update(meeting_id, {"analysis": payload.analysis.model_dump(mode="json"), "speaker_names": payload.speaker_names}, payload.version)
+            validate_source_review(source_review, meeting.get("segments") or [], payload.analysis.actions)
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+        try:
+            result = store.update(meeting_id, {"analysis": payload.analysis.model_dump(mode="json"), "speaker_names": payload.speaker_names, "source_review": source_review.model_dump()}, payload.version)
         except ValueError:
             raise HTTPException(409, "Данные изменились. Обновите страницу перед сохранением.")
         store.audit("review_saved", user, meeting_id, version=result["version"])

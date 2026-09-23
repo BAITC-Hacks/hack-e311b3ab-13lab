@@ -11,13 +11,14 @@ interface TranscriptPanelProps {
   canListen: boolean
   segments: Segment[]
   speakerNames: Record<string, string>
+  confirmedSpeakers?: Record<string, string>
   editableSpeakers: boolean
   highlight: string | null
   audioRef: RefObject<HTMLAudioElement | null>
   onSpeakerName: (speaker: string, name: string) => void
 }
 
-export function TranscriptPanel({ meetingId, canListen, segments, speakerNames, editableSpeakers, highlight, audioRef, onSpeakerName }: TranscriptPanelProps) {
+export function TranscriptPanel({ meetingId, canListen, segments, speakerNames, confirmedSpeakers = {}, editableSpeakers, highlight, audioRef, onSpeakerName }: TranscriptPanelProps) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [audioError, setAudioError] = useState('')
   const speakers = [...new Set(segments.map((segment) => segment.speaker).filter((speaker): speaker is string => Boolean(speaker)))]
@@ -85,7 +86,8 @@ export function TranscriptPanel({ meetingId, canListen, segments, speakerNames, 
                 </button>
               )}
               {segment.start !== null && !canListen && <span className="font-mono text-[11px] text-ink-soft">{formatTimestamp(segment.start)}</span>}
-              <strong className="text-xs text-lime-700">{(segment.speaker && speakerNames[segment.speaker]) || segment.speaker || 'Говорящий не определён'}</strong>
+              <strong className="text-xs text-lime-700">{confirmedSpeakers[segment.id] || (segment.speaker && speakerNames[segment.speaker]) || segment.speaker || 'Говорящий не определён'}</strong>
+              <span className="text-xs text-ink-muted">{confirmedSpeakers[segment.id] ? 'Подтверждено по аудио' : 'Имя не подтверждено'}</span>
               {segment.speaker_uncertain && <span className="text-xs text-amber-700">Проверьте по аудио</span>}
             </div>
             <p>{segment.text}</p>

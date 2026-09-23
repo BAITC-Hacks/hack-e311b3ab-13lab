@@ -3,7 +3,7 @@ import { CheckCheck, Download, FileCheck2, RotateCcw, Save } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { downloadFile, sendJson } from '../../api/client'
 import { queryKeys, useDirectory, useHealth } from '../../api/queries'
-import type { Action, ActionStatus, Analysis, ExportFormat, Meeting, MeetingPermission } from '../../api/types'
+import type { Action, ActionStatus, Analysis, ExportFormat, Meeting, MeetingPermission, SourceReview } from '../../api/types'
 import { useAuth } from '../../auth/context'
 import { ConfirmDialog } from '../../components/Dialog'
 import { useToast } from '../../components/toast-context'
@@ -12,14 +12,16 @@ import { formatDateTime, isOverdue } from '../../lib/format'
 import { ActionCard } from './ActionCard'
 import { PeoplePanel } from './PeoplePanel'
 import { TranscriptPanel } from './TranscriptPanel'
+import { SourceReviewPanel } from './SourceReviewPanel'
 
 interface Draft {
   analysis: Analysis
   speaker_names: Record<string, string>
+  source_review: SourceReview
 }
 
 function draftFrom(meeting: Meeting): Draft {
-  return structuredClone({ analysis: meeting.analysis as Analysis, speaker_names: meeting.speaker_names ?? {} })
+  return structuredClone({ analysis: meeting.analysis as Analysis, speaker_names: meeting.speaker_names ?? {}, source_review: meeting.source_review ?? { terms: [], notes: [] } })
 }
 
 const EXPORTS: Array<{ format: ExportFormat; label: string; extension: string }> = [
@@ -60,7 +62,7 @@ export function MeetingWorkspace({ meeting }: { meeting: Meeting }) {
   }
 
   const save = useMutation({
-    mutationFn: () => sendJson<Meeting>(`/api/meetings/${meeting.id}/review`, 'PUT', { version: meeting.version, analysis: draft.analysis, speaker_names: draft.speaker_names }),
+    mutationFn: () => sendJson<Meeting>(`/api/meetings/${meeting.id}/review`, 'PUT', { version: meeting.version, analysis: draft.analysis, speaker_names: draft.speaker_names, source_review: { ...draft.source_review, terms: draft.source_review.terms.map((term) => term.trim()).filter(Boolean) } }),
     onSuccess: store,
   })
 
@@ -120,8 +122,8 @@ export function MeetingWorkspace({ meeting }: { meeting: Meeting }) {
     setDraft((current) => ({ ...current, analysis: { ...current.analysis, actions: current.analysis.actions.map((action, position) => (position === index ? { ...action, ...patch } : action)) } }))
   }
 
-  function locate(action: Action) {
-    const segment = meeting.segments?.find((item) => action.segment_ids.includes(item.id))
+  function locateSegments(segmentIds: string[]) {
+    const segment = meeting.segments?.find((item) => segmentIds.includes(item.id))
     if (!segment) return notify('Для этой цитаты нет точной привязки к транскрипту', 'info')
     setHighlight(segment.id)
     document.getElementById(`segment-${segment.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -199,9 +201,16 @@ export function MeetingWorkspace({ meeting }: { meeting: Meeting }) {
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,1fr)]">
         <div className="min-w-0 space-y-6">
           <PeoplePanel key={`${meeting.chair_id}:${meeting.participant_ids.join()}`} meeting={meeting} directory={directory.data ?? []} editable={can('people')} />
+          <SourceReviewPanel meetingId={meeting.id} segments={meeting.segments ?? []} actions={actions} value={draft.source_review} editable={editable && can('listen')}
+            onChange={(source_review) => setDraft((current) => ({ ...current, source_review }))}
+            onOwner={(actionId, owner) => setDraft((current) => ({ ...current, analysis: { ...current.analysis, actions: current.analysis.actions.map((action) => action.id === actionId ? { ...action, owner, owner_uncertain: false, owner_evidence: null, assignee_id: null, needs_review: true } : action) } }))}
+            onLocate={(segmentId) => locateSegments([segmentId])} />
 
           <section>
             <h2 className="mb-3 text-lg font-semibold">Краткое содержание</h2>
+            {Boolean(draft.analysis.numeric_fragments?.length) && <p className="mb-2 text-sm text-ink-muted">
+              Числовых фрагментов дословно: {draft.analysis.numeric_fragments?.filter((item) => item.included).length}/{draft.analysis.numeric_fragments?.length}. Это не оценка точности фактов.{dirty ? ' После сохранения счётчик будет пересчитан.' : ''}
+            </p>}
             {editable ? (
               <Textarea rows={5} value={draft.analysis.summary} onChange={(event) => setDraft((current) => ({ ...current, analysis: { ...current.analysis, summary: event.target.value } }))} aria-label="Краткое содержание" />
             ) : (
@@ -239,7 +248,7 @@ export function MeetingWorkspace({ meeting }: { meeting: Meeting }) {
                   people={meeting.people}
                   onChange={(patch) => updateAction(index, patch)}
                   onStatusChange={(status) => action.id && statusUpdate.mutate({ actionId: action.id, status })}
-                  onLocate={() => locate(action)}
+                  onLocate={() => locateSegments(action.segment_ids)}
                 />
               ))}
               {actions.length === 0 && <p className="text-sm text-ink-muted">Поручения не выделены.</p>}
@@ -252,6 +261,7 @@ export function MeetingWorkspace({ meeting }: { meeting: Meeting }) {
           canListen={can('listen')}
           segments={meeting.segments ?? []}
           speakerNames={draft.speaker_names}
+          confirmedSpeakers={Object.fromEntries(draft.source_review.notes.filter((note) => note.kind === 'speaker' && note.audio_checked).map((note) => [note.segment_id, note.text]))}
           editableSpeakers={editable}
           highlight={highlight}
           audioRef={audioRef}

@@ -48,6 +48,17 @@ export interface Action {
   status: ActionStatus
   needs_review: boolean
   assignee_id: string | null
+  owner_evidence?: string | null
+  owner_uncertain?: boolean
+  issued_by?: string | null
+  issued_by_evidence?: string | null
+  deliverable?: string | null
+  deliverable_evidence?: string | null
+  condition?: string | null
+  condition_evidence?: string | null
+  deadline_resolution?: 'unspecified' | 'resolved' | 'ambiguous' | 'event' | 'conflict' | 'uncertain' | 'confirmed'
+  deadline_alternatives?: Array<{ text: string; segment_id: string }>
+  review_questions?: string[]
 }
 
 export interface Analysis {
@@ -55,6 +66,8 @@ export interface Analysis {
   decisions: string[]
   actions: Action[]
   warnings: string[]
+  numeric_fragments?: Array<{ segment_id: string; text: string; included: boolean }>
+  corrections?: Array<{ original: string; suggestion: string; reason: string }>
 }
 
 export interface Segment {
@@ -64,6 +77,20 @@ export interface Segment {
   end: number | null
   speaker: string | null
   speaker_uncertain?: boolean
+}
+
+export interface SourceNote {
+  kind: 'correction' | 'supplement' | 'speaker' | 'owner' | 'uncertain'
+  segment_id: string
+  original: string
+  text: string
+  action_id: string | null
+  audio_checked: boolean
+}
+
+export interface SourceReview {
+  terms: string[]
+  notes: SourceNote[]
 }
 
 export interface Approval {
@@ -97,6 +124,7 @@ export interface Meeting extends MeetingSummary {
   segments?: Segment[]
   analysis?: Analysis | null
   speaker_names?: Record<string, string>
+  source_review?: SourceReview | null
   warnings?: string[]
 }
 

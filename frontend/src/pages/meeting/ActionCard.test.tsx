@@ -24,6 +24,14 @@ function renderCard(props: Partial<Parameters<typeof ActionCard>[0]> = {}) {
 }
 
 describe('ActionCard', () => {
+  it('shows deliverables, conditions, and conflicting source deadlines', () => {
+    renderCard({ action: { ...action, deliverable: 'Отчёт по каждой площадке', condition: 'При повторном нарушении', deadline_resolution: 'conflict', deadline_alternatives: [{ text: 'две недели', segment_id: 's1' }, { text: 'десять дней', segment_id: 's2' }] } })
+    expect(screen.getByText(/Отчёт по каждой площадке/)).toBeInTheDocument()
+    expect(screen.getByText(/При повторном нарушении/)).toBeInTheDocument()
+    expect(screen.getByText(/Тип срока: противоречивый/)).toBeInTheDocument()
+    expect(screen.getByText(/две недели \[s1\]/)).toBeInTheDocument()
+    expect(screen.getByText(/десять дней \[s2\]/)).toBeInTheDocument()
+  })
   it('is read-only for readers and shows the assigned person', () => {
     renderCard()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()

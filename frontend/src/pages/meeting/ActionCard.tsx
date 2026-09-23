@@ -50,10 +50,10 @@ export function ActionCard({ action, index, editable, canChangeStatus, statusPen
       {editable ? (
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field label="Ответственный из речи">
-            <Input value={action.owner ?? ''} onChange={(event) => onChange({ owner: event.target.value || null })} />
+            <Input value={action.owner ?? ''} onChange={(event) => onChange({ owner: event.target.value || null, owner_uncertain: true, owner_evidence: null, assignee_id: null, needs_review: true })} />
           </Field>
           <Field label="Дата исполнения" hint={`В речи: ${action.deadline_text || 'не указан'}`}>
-            <Input type="date" value={action.due_date ?? ''} onChange={(event) => onChange({ due_date: event.target.value || null })} />
+            <Input type="date" value={action.due_date ?? ''} onChange={(event) => onChange({ due_date: event.target.value || null, deadline_resolution: event.target.value ? 'confirmed' : 'ambiguous', needs_review: true })} />
           </Field>
           <Field label="Исполнитель в системе" hint="Увидит поручение после утверждения">
             <Select value={action.assignee_id ?? ''} onChange={(event) => onChange({ assignee_id: event.target.value || null })}>
@@ -106,6 +106,17 @@ export function ActionCard({ action, index, editable, canChangeStatus, statusPen
       )}
 
       <blockquote className="mt-4 border-l-3 border-lime-200 pl-3 text-sm leading-relaxed text-ink-muted">{action.evidence}</blockquote>
+      <div className="mt-3 space-y-2 text-sm">
+        {(['issued_by', 'deliverable', 'condition'] as const).map((field) => {
+          const label = { issued_by: 'Поручил(а)', deliverable: 'Ожидаемый результат', condition: 'Условие исполнения' }[field]
+          return editable ? <Field key={field} label={label}><Input value={action[field] ?? ''} onChange={(event) => onChange({ [field]: event.target.value || null, [`${field}_evidence`]: null, needs_review: true })} /></Field> : action[field] ? <p key={field}><strong>{label}:</strong> {action[field]}</p> : null
+        })}
+        {action.owner_evidence && <p>Основание исполнителя: {action.owner_evidence}</p>}
+        {action.owner_uncertain && <p className="text-amber-700">Исполнитель требует подтверждения по источнику.</p>}
+        {action.deadline_resolution && <p>Тип срока: {({ unspecified: 'не указан', resolved: 'рассчитан', ambiguous: 'неоднозначный', event: 'относительно события', conflict: 'противоречивый', uncertain: 'искажённая формулировка', confirmed: 'дата задана человеком' })[action.deadline_resolution]}</p>}
+        {action.deadline_alternatives?.map((alternative, position) => <p key={position}>Вариант срока: {alternative.text} [{alternative.segment_id}]</p>)}
+        {action.review_questions?.map((question, position) => <p key={position} className="text-amber-700">{question}</p>)}
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <Button size="sm" variant="ghost" onClick={onLocate} icon={<LocateFixed className="size-3.5" />}>
