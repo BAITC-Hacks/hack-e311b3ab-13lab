@@ -8,7 +8,7 @@ const text = (tag, value, className) => { const element = document.createElement
 function notify(message) { $('#message').textContent = message; $('#message').hidden = !message; }
 async function api(path, options = {}) {
   const response = await fetch(path, {...options, headers:{...options.headers, ...(token ? {Authorization:`Bearer ${token}`} : {})}});
-  if (response.status === 401) { if (!$('#auth').open) $('#auth').showModal(); throw new Error('Введите токен доступа'); }
+  if (response.status === 401) { token = ''; sessionStorage.removeItem('qorytyn-token'); if (!$('#auth').open) $('#auth').showModal(); throw new Error('Войдите в систему'); }
   if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(typeof body.detail === 'string' ? body.detail : `Ошибка запроса (${response.status})`); }
   return response;
 }
@@ -89,7 +89,15 @@ document.querySelectorAll('[data-export]').forEach(button => button.onclick = as
   try { await save(); const format = button.dataset.export; const blob = await (await api(`/api/meetings/${selected.id}/export/${format}`)).blob(); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `protocol-${selected.meeting_date}.${format}`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url),1000); }
   catch(error) { notify(error.message); }
 });
-$('#auth').addEventListener('close',() => { token = $('#token').value; sessionStorage.setItem('qorytyn-token',token); listMeetings().catch(error => notify(error.message)); });
+$('#auth').addEventListener('close', async () => {
+  try {
+    const response = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:$('#email').value, password:$('#password').value})});
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Не удалось войти');
+    token = body.token; sessionStorage.setItem('qorytyn-token', token); $('#password').value = ''; notify('');
+    await listMeetings();
+  } catch (error) { notify(error.message); $('#auth').showModal(); }
+});
 $('[name="meeting_date"]').value = new Date().toLocaleDateString('en-CA');
 api('/api/health').then(response => response.json()).then(health => { $('#health').textContent = health.provider_configured ? '● Сервис настроен' : '○ Настройте ключ на сервере'; }).catch(error => notify(error.message));
 listMeetings().catch(error => notify(error.message));

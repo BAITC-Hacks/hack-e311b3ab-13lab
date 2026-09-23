@@ -1,26 +1,12 @@
-import tempfile
-import time
 import unittest
-from dataclasses import replace
 from io import BytesIO
-from pathlib import Path
 
 from docx import Document
-from fastapi.testclient import TestClient
 
-from app.config import Settings
 from app.deadlines import resolve_deadline
-from app.main import create_app
 from app.models import Action, Analysis, Segment, Word
 from app.pipeline import make_segments, validate_evidence
-
-
-class FakeProvider:
-    async def transcribe(self, path):
-        return "Айжан подготовит отчёт к пятнице.", [Segment(id="s1", text="Айжан подготовит отчёт к пятнице.", start=0, end=3)]
-
-    async def analyze(self, segments, meeting_date, title):
-        return Analysis(summary="Подготовка отчёта", actions=[Action(title="Подготовить отчёт", owner="Айжан", deadline_text="к пятнице", due_date="2026-09-25", evidence=segments[0].text, segment_ids=["s1"])])
+from tests.helpers import PASSWORD, AppTestCase
 
 
 class PipelineTests(unittest.TestCase):
@@ -63,62 +49,89 @@ class PipelineTests(unittest.TestCase):
         result = validate_evidence(Analysis(summary="", actions=[action, action.model_copy()]), [Segment(id="s1", text=action.evidence)])
         self.assertEqual(len(result.actions), 1)
 
+    def test_model_cannot_set_internal_fields(self):
+        action = Action(title="Отчёт", evidence="Подготовить отчёт.", id="forged", assignee_id="someone")
+        result = validate_evidence(Analysis(summary="", actions=[action]), [Segment(id="s1", text=action.evidence)])
+        self.assertNotEqual(result.actions[0].id, "forged")
+        self.assertIsNone(result.actions[0].assignee_id)
 
-class APITests(unittest.TestCase):
-    def setUp(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.settings = replace(Settings.from_env(), data_dir=Path(self.directory.name), api_key="test", app_token="test-access", max_upload_bytes=32, diarization_model_path="")
-        self.client = TestClient(create_app(self.settings, FakeProvider()))
-        self.client.__enter__()
-        self.headers = {"Authorization": "Bearer test-access"}
+    def test_llm_schema_hides_internal_fields(self):
+        properties = Analysis.model_json_schema()["$defs"]["Action"]["properties"]
+        self.assertNotIn("id", properties)
+        self.assertNotIn("assignee_id", properties)
 
-    def tearDown(self):
-        self.client.__exit__(None, None, None)
-        self.directory.cleanup()
 
-    def upload(self, content=b"audio", consent="true", filename="sample.mp3"):
-        return self.client.post("/api/meetings", headers=self.headers, data={"title": "Тест", "meeting_date": "2026-09-23", "recording_consent": consent}, files={"audio": (filename, content, "audio/mpeg")})
-
-    def ready_meeting(self):
-        response = self.upload()
-        self.assertEqual(response.status_code, 202)
-        meeting_id = response.json()["id"]
-        for attempt in range(100):
-            result = self.client.get(f"/api/meetings/{meeting_id}", headers=self.headers).json()
-            if result["status"] == "ready":
-                return result
-            time.sleep(.01)
-        self.fail("Pipeline did not finish")
-
-    def test_private_endpoints_require_authentication(self):
+class AuthTests(AppTestCase):
+    def test_private_endpoints_require_login(self):
         self.assertEqual(self.client.get("/api/meetings").status_code, 401)
+        self.assertEqual(self.client.get("/api/meetings", headers={"Authorization": "Bearer forged"}).status_code, 401)
         self.assertEqual(self.client.get("/api/health").status_code, 200)
 
+    def test_login_logout_and_session_revocation(self):
+        me = self.get("/api/auth/me", "secretary").json()
+        self.assertEqual(me["role"], "secretary")
+        self.assertIn("meetings:create", me["permissions"])
+        self.assertEqual(self.client.post("/api/auth/logout", headers=self.auth("secretary")).status_code, 204)
+        self.assertEqual(self.get("/api/auth/me", "secretary").status_code, 401)
+
+    def test_failed_logins_are_throttled(self):
+        for _attempt in range(5):
+            self.assertEqual(self.client.post("/api/auth/login", json={"email": "chair@example.kz", "password": "wrong"}).status_code, 401)
+        self.assertEqual(self.client.post("/api/auth/login", json={"email": "chair@example.kz", "password": PASSWORD}).status_code, 429)
+        self.assertEqual(self.client.post("/api/auth/login", json={"email": "nobody@example.kz", "password": PASSWORD}).status_code, 401)
+
+    def test_password_change_invalidates_old_sessions(self):
+        response = self.client.post("/api/auth/password", headers=self.auth("chair"), json={"current_password": PASSWORD, "new_password": "another-long-password"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.get("/api/auth/me", "chair").status_code, 401)
+        self.assertEqual(self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {response.json()['token']}"}).status_code, 200)
+
+    def test_security_headers(self):
+        response = self.client.get("/")
+        self.assertIn("default-src 'self'", response.headers["content-security-policy"])
+        self.assertEqual(self.get("/api/meetings", "secretary").headers["cache-control"], "no-store")
+
+
+class MeetingTests(AppTestCase):
     def test_recording_consent_required(self):
         self.assertEqual(self.upload(consent="false").status_code, 400)
 
     def test_upload_limits_and_cleanup(self):
         self.assertEqual(self.upload(content=b"a" * 33).status_code, 413)
-        self.assertEqual(list((self.settings.data_dir / "audio").iterdir()), [])
+        self.assertEqual(list((self.settings.data_dir / "tmp").iterdir()), [])
+        self.assertFalse((self.settings.data_dir / "audio").exists())
         self.assertEqual(self.upload(content=b"").status_code, 400)
         self.assertEqual(self.upload(filename="sample.exe").status_code, 415)
 
     def test_pipeline_review_conflict_and_exports(self):
         meeting = self.ready_meeting()
         self.assertIn("Диаризация не настроена", meeting["analysis"]["warnings"][0])
-        payload = {"version": meeting["version"], "analysis": meeting["analysis"], "speaker_names": {}}
-        payload["analysis"]["actions"][0]["status"] = "done"
-        self.assertEqual(self.client.put(f"/api/meetings/{meeting['id']}/review", headers=self.headers, json=payload).status_code, 200)
-        self.assertEqual(self.client.put(f"/api/meetings/{meeting['id']}/review", headers=self.headers, json=payload).status_code, 409)
-        markdown = self.client.get(f"/api/meetings/{meeting['id']}/export/md", headers=self.headers)
+        meeting["analysis"]["actions"][0]["status"] = "done"
+        self.assertEqual(self.review(meeting).status_code, 200)
+        self.assertEqual(self.review(meeting).status_code, 409)
+        markdown = self.get(f"/api/meetings/{meeting['id']}/export/md", "secretary")
         self.assertIn("Айжан", markdown.text)
-        word = self.client.get(f"/api/meetings/{meeting['id']}/export/docx", headers=self.headers)
+        self.assertIn("Выполнено", markdown.text)
+        word = self.get(f"/api/meetings/{meeting['id']}/export/docx", "secretary")
         document = Document(BytesIO(word.content))
         self.assertEqual(document.tables[0].rows[1].cells[1].text, "Айжан")
-        self.assertEqual(self.client.get(f"/api/meetings/{meeting['id']}/retry", headers=self.headers).status_code, 405)
+        self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/retry", "secretary").status_code, 405)
+        self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/export/xml", "secretary").status_code, 404)
 
     def test_missing_meeting(self):
-        self.assertEqual(self.client.get("/api/meetings/unknown", headers=self.headers).status_code, 404)
+        self.assertEqual(self.get("/api/meetings/unknown", "secretary").status_code, 404)
+
+    def test_audio_is_served_from_storage(self):
+        meeting = self.ready_meeting()
+        response = self.get(f"/api/meetings/{meeting['id']}/audio", "secretary")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"audio")
+
+    def test_delete_removes_recording(self):
+        meeting = self.ready_meeting()
+        self.assertEqual(self.client.delete(f"/api/meetings/{meeting['id']}", headers=self.auth("secretary")).status_code, 204)
+        self.assertEqual(self.get(f"/api/meetings/{meeting['id']}", "secretary").status_code, 404)
+        self.assertEqual(list((self.settings.data_dir / "audio").iterdir()), [])
 
 
 if __name__ == "__main__":

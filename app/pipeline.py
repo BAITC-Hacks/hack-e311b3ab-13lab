@@ -1,12 +1,14 @@
 import asyncio
 import json
 import re
+import uuid
 from pathlib import Path
 
 import httpx
 
-from app.models import Analysis, Segment, Word
 from app.deadlines import ground_deadlines
+from app.models import Analysis, Segment, Word
+from app.store import audio_key
 
 
 def normalize(value):
@@ -51,6 +53,8 @@ def validate_evidence(analysis: Analysis, segments: list[Segment]):
                 action.segment_ids.append(segment.id)
             offset = end + 1
         action.needs_review = True
+        action.id = uuid.uuid4().hex[:12]
+        action.assignee_id = None
         if not action.deadline_text:
             action.due_date = None
         valid_actions.append(action)
@@ -158,12 +162,15 @@ def diarize(path, segments, model_path):
     return segments
 
 
-async def run_pipeline(meeting_id, store, settings, provider, semaphore):
+async def run_pipeline(meeting_id, store, settings, provider, semaphore, blobs):
     async with semaphore:
         meeting = store.get(meeting_id)
-        path = settings.data_dir / "audio" / meeting["audio_file"]
+        if meeting is None:
+            return
+        path = None
         try:
             store.update(meeting_id, {"status": "transcribing", "error": None})
+            path = await asyncio.to_thread(blobs.checkout, audio_key(meeting))
             transcript, segments = await provider.transcribe(path)
             store.update(meeting_id, {"transcript": transcript, "segments": [segment.model_dump() for segment in segments], "status": "diarizing"})
             warnings = []
@@ -175,10 +182,24 @@ async def run_pipeline(meeting_id, store, settings, provider, semaphore):
             analysis = await provider.analyze(segments, meeting["meeting_date"], meeting["title"])
             analysis.warnings.extend(warnings)
             store.update(meeting_id, {"status": "ready", "error": None, "analysis": analysis.model_dump(mode="json")})
+        except KeyError:
+            return  # the meeting was deleted while it was being processed
         except httpx.HTTPStatusError as error:
-            store.update(meeting_id, {"status": "failed", "error": f"Сервис моделей вернул HTTP {error.response.status_code}. Проверьте доступ и повторите обработку."})
+            fail(store, meeting_id, f"Сервис моделей вернул HTTP {error.response.status_code}. Проверьте доступ и повторите обработку.")
         except httpx.TimeoutException:
-            store.update(meeting_id, {"status": "failed", "error": "Истёк таймаут сервиса моделей. Повторите обработку."})
+            fail(store, meeting_id, "Истёк таймаут сервиса моделей. Повторите обработку.")
+        except FileNotFoundError:
+            fail(store, meeting_id, "Исходная запись не найдена в хранилище.")
         except Exception as error:
             message = str(error) if isinstance(error, RuntimeError) else f"Ошибка обработки ({type(error).__name__}). Проверьте настройки моделей и формат ответа."
-            store.update(meeting_id, {"status": "failed", "error": message})
+            fail(store, meeting_id, message)
+        finally:
+            if path is not None:
+                await asyncio.to_thread(blobs.release, path)
+
+
+def fail(store, meeting_id, message):
+    try:
+        store.update(meeting_id, {"status": "failed", "error": message})
+    except KeyError:
+        pass
