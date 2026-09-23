@@ -10,7 +10,7 @@ class TeamsAdapter(Adapter):
 
     platform = "teams"
     lobby_text = (r"Someone in the meeting should let you in soon", r"When the meeting starts, we'll let people know you're waiting", r"waiting for (someone|people) to let you in")
-    denied_text = (r"denied access to the meeting", r"You can't join this meeting", r"Your request to join was declined")
+    denied_text = (r"denied access to the meeting", r"Your request to join was declined", r"Sorry, you've been denied")
     ended_text = (r"You've been removed from this meeting", r"The meeting has ended", r"You left the meeting", r"Thanks for joining")
     leave_button = (r"^Leave", r"^Hang up")
     leave_selectors = ('#hangup-button', '[data-tid="hangup-main-btn"]', '[data-tid="call-hangup"]')

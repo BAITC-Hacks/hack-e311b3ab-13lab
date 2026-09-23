@@ -19,6 +19,7 @@ class Adapter:
     ended_text: tuple[str, ...] = ()
     leave_button: tuple[str, ...] = ()
     leave_selectors: tuple[str, ...] = ()
+    last_match = ""
 
     def web_url(self, url: str) -> str:
         return url
@@ -27,14 +28,15 @@ class Adapter:
         raise NotImplementedError
 
     async def state(self, page: Page) -> str:
-        """prejoin, lobby, joined, denied or ended."""
-        text = await page_text(page)
-        if matches(text, self.denied_text):
-            return "denied"
-        if matches(text, self.ended_text):
-            return "ended"
+        """prejoin, lobby, joined, denied or ended. Being in the call wins over any text."""
         if await find_button(page, self.leave_button) or await self._visible(page, self.leave_selectors):
             return "joined"
+        text = await page_text(page)
+        for state, patterns in (("denied", self.denied_text), ("ended", self.ended_text)):
+            for pattern in patterns:
+                if found := re.search(pattern, text, re.IGNORECASE):
+                    self.last_match = text[max(0, found.start() - 80):found.end() + 80].replace("\n", " | ")
+                    return state
         if matches(text, self.lobby_text):
             return "lobby"
         return "prejoin"

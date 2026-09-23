@@ -75,8 +75,19 @@ class BotSession:
         next_roster = 0.0
         pump = None
         try:
+            final_seen = 0
             while not self.stop_requested.is_set():
                 state = await self.adapter.state(page)
+                # Pages flash transitional messages; only a state that persists for ~5 s ends the session.
+                if state in ("denied", "ended"):
+                    final_seen += 1
+                    if final_seen == 1:
+                        logger.info("Bot %s sees %s: %s", self.session_id[:8], state, self.adapter.last_match[:240])
+                    if final_seen < 4:
+                        await asyncio.sleep(1.5)
+                        continue
+                else:
+                    final_seen = 0
                 if state != last_status:
                     last_status = state
                     await self.snapshot(page, state)
