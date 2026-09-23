@@ -8,28 +8,31 @@ class PermissionFunctionTests(unittest.TestCase):
     def test_secretary_has_everything_and_admin_only_metadata(self):
         meeting = {"status": "ready", "created_by": "x", "participant_ids": []}
         self.assertIn("delete", meeting_permissions({"id": "s", "role": Role.SECRETARY}, meeting))
-        self.assertEqual(meeting_permissions({"id": "a", "role": Role.ADMIN}, meeting), {"view", "delete"})
+        self.assertIn("read", meeting_permissions({"id": "a", "role": Role.ADMIN}, meeting))
         self.assertEqual(meeting_permissions({"id": "u", "role": Role.AUDITOR}, meeting), {"view"})
         self.assertEqual(meeting_permissions({"id": "p", "role": Role.PARTICIPANT}, meeting), set())
 
 
 class RoleAccessTests(AppTestCase):
     def test_only_secretary_and_chair_can_upload(self):
-        for name in ("admin", "auditor", "participant"):
+        for name in ("auditor", "participant"):
             self.assertEqual(self.upload(as_user=name).status_code, 403, name)
         response = self.upload(as_user="chair")
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["chair_id"], self.users["chair"]["id"])
 
-    def test_admin_and_auditor_see_metadata_only(self):
+    def test_admin_has_full_access_and_auditor_sees_metadata_only(self):
         meeting = self.ready_meeting()
-        for name in ("admin", "auditor"):
-            detail = self.get(f"/api/meetings/{meeting['id']}", name).json()
-            self.assertEqual(detail["title"], "Тест")
-            self.assertNotIn("transcript", detail)
-            self.assertNotIn("analysis", detail)
-            self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/audio", name).status_code, 403)
-            self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/export/md", name).status_code, 403)
+        detail = self.get(f"/api/meetings/{meeting['id']}", "admin").json()
+        self.assertIn("analysis", detail)
+        self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/audio", "admin").status_code, 200)
+        self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/export/md", "admin").status_code, 200)
+        self.assertEqual(self.upload(as_user="admin").status_code, 202)
+        audited = self.get(f"/api/meetings/{meeting['id']}", "auditor").json()
+        self.assertNotIn("transcript", audited)
+        self.assertNotIn("analysis", audited)
+        self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/audio", "auditor").status_code, 403)
+        self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/export/md", "auditor").status_code, 403)
         self.assertEqual(self.client.delete(f"/api/meetings/{meeting['id']}", headers=self.auth("auditor")).status_code, 403)
         self.assertEqual(self.client.delete(f"/api/meetings/{meeting['id']}", headers=self.auth("admin")).status_code, 204)
 

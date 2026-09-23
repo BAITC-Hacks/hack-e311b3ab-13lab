@@ -35,7 +35,7 @@ class Permission(StrEnum):
 
 
 ROLE_PERMISSIONS = {
-    Role.ADMIN: frozenset({Permission.MANAGE_USERS, Permission.READ_DIRECTORY, Permission.READ_AUDIT}),
+    Role.ADMIN: frozenset({Permission.MANAGE_USERS, Permission.READ_DIRECTORY, Permission.READ_AUDIT, Permission.CREATE_MEETINGS}),
     Role.SECRETARY: frozenset({Permission.CREATE_MEETINGS, Permission.READ_DIRECTORY}),
     Role.CHAIR: frozenset({Permission.CREATE_MEETINGS, Permission.READ_DIRECTORY}),
     Role.PARTICIPANT: frozenset(),
@@ -75,13 +75,11 @@ def assignee_ids(meeting) -> set:
 
 def meeting_permissions(user, meeting) -> frozenset:
     role = user["role"]
-    if role == Role.SECRETARY:
+    if role in (Role.ADMIN, Role.SECRETARY):
         return ALL_MEETING_PERMISSIONS
     granted = set()
-    if role in (Role.ADMIN, Role.AUDITOR):
+    if role == Role.AUDITOR:
         granted.add(MP.VIEW)
-    if role == Role.ADMIN:
-        granted.add(MP.DELETE)
     if role == Role.CHAIR and user["id"] in (meeting.get("created_by"), meeting.get("chair_id")):
         granted |= CHAIR_PERMISSIONS
     if meeting.get("status") == "approved":

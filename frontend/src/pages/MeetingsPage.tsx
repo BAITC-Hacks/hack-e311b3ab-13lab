@@ -44,7 +44,7 @@ export function MeetingsPage() {
         }
       >
         {user?.role === 'participant' && 'Здесь появляются утверждённые протоколы совещаний, в которых вы указаны участником.'}
-        {(user?.role === 'admin' || user?.role === 'auditor') && 'Вам доступны только метаданные совещаний: название, дата и статус.'}
+        {user?.role === 'auditor' && 'Вам доступны только метаданные совещаний: название, дата и статус.'}
       </PageHeader>
 
       <div className="mb-5 flex flex-wrap items-center gap-3">

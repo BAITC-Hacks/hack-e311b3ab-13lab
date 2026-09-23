@@ -77,9 +77,10 @@ class SourceReviewTests(AppTestCase):
     def test_permissions_and_approval_lock(self):
         meeting = self.ready_meeting()
         endpoint = f"/api/meetings/{meeting['id']}/source-suggestions"
-        for role in ("admin", "auditor", "participant"):
+        for role in ("auditor", "participant"):
             self.assertIn(self.client.post(endpoint, headers=self.auth(role), json={"terms": ["Айдан"]}).status_code, (403, 404))
             self.assertNotIn("source_review", self.get(f"/api/meetings/{meeting['id']}", role).json())
+        self.assertEqual(self.client.post(endpoint, headers=self.auth("admin"), json={"terms": ["Айдан"]}).status_code, 200)  # admins have full access
         self.assertEqual(self.client.post(endpoint, headers=self.auth("secretary"), json={"terms": ["Айдан"]}).status_code, 200)
         self.assertEqual(self.client.post(endpoint, headers=self.auth("secretary"), json={"terms": ["x" * 201]}).status_code, 422)
         approved = self.approve(meeting)
