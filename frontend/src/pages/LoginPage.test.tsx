@@ -45,6 +45,6 @@ describe('LoginPage', () => {
     await userEvent.type(screen.getByLabelText('Пароль'), 'correct-password')
     await userEvent.click(screen.getByRole('button', { name: 'Войти' }))
     expect(await screen.findByText('Главная')).toBeInTheDocument()
-    expect(sessionStorage.getItem('qorytyn-token')).toBe('fresh-token')
+    expect(sessionStorage.getItem('hattama-token')).toBe('fresh-token')
   })
 })

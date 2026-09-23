@@ -20,7 +20,7 @@ from app.rbac import ROLE_LABELS, MeetingPermission as MP, Permission, Role, ass
 from app.security import DUMMY_HASH, verify_password
 from app.store import Store, audio_key, new_meeting, now
 
-logger = logging.getLogger("qorytyn")
+logger = logging.getLogger("hattama")
 
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".mp4"}
 INTERRUPTED = "Обработка прервана перезапуском сервера. Нажмите «Повторить»."
@@ -92,7 +92,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    app = FastAPI(title="13Lab · Qorytyn", lifespan=lifespan)
+    app = FastAPI(title="HATTAMA.AI · 13Lab", lifespan=lifespan)
     app.state.store = store
     app.state.blobs = blobs
     app.state.settings = settings

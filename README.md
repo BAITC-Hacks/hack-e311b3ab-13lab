@@ -1,10 +1,10 @@
-# Qorytyn — протоколы совещаний и контроль поручений
+# HATTAMA.AI — протоколы совещаний и контроль поручений
 
 HackAlem AI · команда **13Lab**: Mukhammed Erzhanuly, Arman Nurken, Darkhan Omirbay.
 
 Mukhamed is here
 
-Qorytyn превращает запись совещания в редактируемое саммари, решения и поручения с ответственными, сроками и цитатами. Нажатие на источник открывает нужное место транскрипта и позиционирует аудио. Секретарь проверяет результат и выгружает DOCX, Markdown или JSON.
+HATTAMA.AI превращает запись совещания в редактируемое саммари, решения и поручения с ответственными, сроками и цитатами. Нажатие на источник открывает нужное место транскрипта и позиционирует аудио. Секретарь проверяет результат и выгружает DOCX, Markdown или JSON.
 
 **Статус: рабочий MVP, не завершённая промышленная система.** Реальные записи прошли распознавание и извлечение поручений через предоставленный командой self-hosted Til-Qazyna. Диаризация требует отдельно установленных локальных весов и пока не проверена на этих записях. Ошибки ASR в именах и числах сохраняются как предмет проверки, а не скрываются. Подробности: [результаты проверки](docs/TESTING.md).
 
@@ -93,10 +93,10 @@ npm run dev        # http://127.0.0.1:5173
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | пусто | Первый администратор, создаётся только если активного администратора нет |
 | `SESSION_HOURS` | `12` | Время жизни сессии после входа |
 | `DIARIZATION_MODEL_PATH` | пусто | Локальный каталог модели pyannote |
-| `DATABASE_URL` | пусто | PostgreSQL, например `postgresql://user:pass@host:5432/qorytyn`; пусто означает SQLite в `DATA_DIR` |
+| `DATABASE_URL` | пусто | PostgreSQL, например `postgresql://user:pass@host:5432/hattama`; пусто означает SQLite в `DATA_DIR` |
 | `MINIO_ENDPOINT` | пусто | Адрес MinIO / S3, например `minio:9000`; пусто означает файлы в `DATA_DIR` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | пусто | Учётные данные хранилища |
-| `MINIO_BUCKET` | `qorytyn` | Bucket создаётся при запуске, если его нет |
+| `MINIO_BUCKET` | `hattama` | Bucket создаётся при запуске, если его нет |
 | `MINIO_SECURE` | `false` | HTTPS к хранилищу |
 | `PDF_FONT_PATH` / `PDF_FONT_BOLD_PATH` | пусто | TTF со шрифтом кириллицы; без них ищутся DejaVu, Arial |
 
@@ -147,11 +147,11 @@ npm run typecheck && npm run lint && npm test && npm run build
 Проверка на PostgreSQL и MinIO (тест удаляет и пересоздаёт таблицы в указанной базе):
 
 ```bash
-docker run -d --name qorytyn-test-pg -e POSTGRES_USER=qorytyn -e POSTGRES_PASSWORD=test-secret -e POSTGRES_DB=qorytyn -p 127.0.0.1:55432:5432 postgres:16-alpine
-docker run -d --name qorytyn-test-minio -e MINIO_ROOT_USER=qorytyn -e MINIO_ROOT_PASSWORD=test-secret-minio -p 127.0.0.1:59000:9000 quay.io/minio/minio server /data
-QORYTYN_TEST_DATABASE_URL=postgresql://qorytyn:test-secret@127.0.0.1:55432/qorytyn \
-QORYTYN_TEST_MINIO_ENDPOINT=127.0.0.1:59000 QORYTYN_TEST_MINIO_ACCESS_KEY=qorytyn \
-QORYTYN_TEST_MINIO_SECRET_KEY=test-secret-minio python -m unittest tests.test_integration -v
+docker run -d --name hattama-test-pg -e POSTGRES_USER=hattama -e POSTGRES_PASSWORD=test-secret -e POSTGRES_DB=hattama -p 127.0.0.1:55432:5432 postgres:16-alpine
+docker run -d --name hattama-test-minio -e MINIO_ROOT_USER=hattama -e MINIO_ROOT_PASSWORD=test-secret-minio -p 127.0.0.1:59000:9000 quay.io/minio/minio server /data
+HATTAMA_TEST_DATABASE_URL=postgresql://hattama:test-secret@127.0.0.1:55432/hattama \
+HATTAMA_TEST_MINIO_ENDPOINT=127.0.0.1:59000 HATTAMA_TEST_MINIO_ACCESS_KEY=hattama \
+HATTAMA_TEST_MINIO_SECRET_KEY=test-secret-minio python -m unittest tests.test_integration -v
 ```
 
 Реальный прогон с сервером моделей:

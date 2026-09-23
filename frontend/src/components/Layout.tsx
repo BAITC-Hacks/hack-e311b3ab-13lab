@@ -26,7 +26,7 @@ const NAV: NavItem[] = [
 export function Brand({ className }: { className?: string }) {
   return (
     <span className={clsx('text-3xl font-extrabold tracking-tighter', className)}>
-      Q<span className="text-lime-300">◌</span>rytyn
+      HATTAMA<span className="text-lime-300">.AI</span>
     </span>
   )
 }

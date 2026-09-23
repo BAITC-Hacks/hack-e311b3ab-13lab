@@ -1,4 +1,4 @@
-const TOKEN_KEY = 'qorytyn-token'
+const TOKEN_KEY = 'hattama-token'
 
 function readStoredToken(): string {
   try {

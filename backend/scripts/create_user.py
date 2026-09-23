@@ -14,7 +14,7 @@ from app.store import Store
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create a Qorytyn user")
+    parser = argparse.ArgumentParser(description="Create a HATTAMA.AI user")
     parser.add_argument("--email", required=True)
     parser.add_argument("--name", required=True)
     parser.add_argument("--role", required=True, choices=[role.value for role in Role])

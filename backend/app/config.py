@@ -21,7 +21,7 @@ class Settings:
     minio_endpoint: str = ""
     minio_access_key: str = ""
     minio_secret_key: str = ""
-    minio_bucket: str = "qorytyn"
+    minio_bucket: str = "hattama"
     minio_secure: bool = False
     session_hours: int = 12
     admin_email: str = ""
@@ -45,7 +45,7 @@ class Settings:
             minio_endpoint=os.getenv("MINIO_ENDPOINT", ""),
             minio_access_key=os.getenv("MINIO_ACCESS_KEY", ""),
             minio_secret_key=os.getenv("MINIO_SECRET_KEY", ""),
-            minio_bucket=os.getenv("MINIO_BUCKET", "qorytyn"),
+            minio_bucket=os.getenv("MINIO_BUCKET", "hattama"),
             minio_secure=_flag("MINIO_SECURE"),
             session_hours=int(os.getenv("SESSION_HOURS", "12")),
             admin_email=os.getenv("ADMIN_EMAIL", ""),

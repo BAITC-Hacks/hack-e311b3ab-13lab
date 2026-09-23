@@ -14,7 +14,7 @@ from app.models import Action, Analysis, Segment
 
 # Cheaper scrypt cost keeps the suite fast; verification reads the cost from each hash.
 security.SCRYPT_N = 2**10
-logging.getLogger("qorytyn").setLevel(logging.ERROR)
+logging.getLogger("hattama").setLevel(logging.ERROR)
 
 PASSWORD = "correct-horse-battery"
 ROLES = {"admin": "admin", "secretary": "secretary", "chair": "chair", "participant": "participant", "auditor": "auditor", "outsider": "participant"}

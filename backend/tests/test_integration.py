@@ -1,8 +1,8 @@
 """End-to-end run on PostgreSQL and MinIO. Skipped unless these are set:
 
-    QORYTYN_TEST_DATABASE_URL=postgresql://qorytyn:secret@127.0.0.1:55432/qorytyn
-    QORYTYN_TEST_MINIO_ENDPOINT=127.0.0.1:59000
-    QORYTYN_TEST_MINIO_ACCESS_KEY=... QORYTYN_TEST_MINIO_SECRET_KEY=...
+    HATTAMA_TEST_DATABASE_URL=postgresql://hattama:secret@127.0.0.1:55432/hattama
+    HATTAMA_TEST_MINIO_ENDPOINT=127.0.0.1:59000
+    HATTAMA_TEST_MINIO_ACCESS_KEY=... HATTAMA_TEST_MINIO_SECRET_KEY=...
 
 The test drops and recreates all tables in that database.
 """
@@ -16,19 +16,19 @@ from sqlalchemy import create_engine
 from app.store import database_url, metadata
 from tests.helpers import AppTestCase, make_settings
 
-DATABASE = os.getenv("QORYTYN_TEST_DATABASE_URL", "")
-MINIO = os.getenv("QORYTYN_TEST_MINIO_ENDPOINT", "")
+DATABASE = os.getenv("HATTAMA_TEST_DATABASE_URL", "")
+MINIO = os.getenv("HATTAMA_TEST_MINIO_ENDPOINT", "")
 
 
-@unittest.skipUnless(DATABASE and MINIO, "set QORYTYN_TEST_DATABASE_URL and QORYTYN_TEST_MINIO_ENDPOINT")
+@unittest.skipUnless(DATABASE and MINIO, "set HATTAMA_TEST_DATABASE_URL and HATTAMA_TEST_MINIO_ENDPOINT")
 class PostgresMinioTests(AppTestCase):
     def setUp(self):
-        bucket = f"qorytyn-test-{uuid.uuid4().hex[:8]}"
+        bucket = f"hattama-test-{uuid.uuid4().hex[:8]}"
         self.settings_overrides = {
             "database_url": DATABASE,
             "minio_endpoint": MINIO,
-            "minio_access_key": os.getenv("QORYTYN_TEST_MINIO_ACCESS_KEY", ""),
-            "minio_secret_key": os.getenv("QORYTYN_TEST_MINIO_SECRET_KEY", ""),
+            "minio_access_key": os.getenv("HATTAMA_TEST_MINIO_ACCESS_KEY", ""),
+            "minio_secret_key": os.getenv("HATTAMA_TEST_MINIO_SECRET_KEY", ""),
             "minio_bucket": bucket,
         }
         engine = create_engine(database_url(make_settings(".", database_url=DATABASE)))
