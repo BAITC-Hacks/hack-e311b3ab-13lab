@@ -18,6 +18,7 @@ class Adapter:
     denied_text: tuple[str, ...] = ()
     ended_text: tuple[str, ...] = ()
     leave_button: tuple[str, ...] = ()
+    leave_selectors: tuple[str, ...] = ()
 
     def web_url(self, url: str) -> str:
         return url
@@ -32,11 +33,20 @@ class Adapter:
             return "denied"
         if matches(text, self.ended_text):
             return "ended"
-        if await find_button(page, self.leave_button):
+        if await find_button(page, self.leave_button) or await self._visible(page, self.leave_selectors):
             return "joined"
         if matches(text, self.lobby_text):
             return "lobby"
         return "prejoin"
+
+    async def _visible(self, page: Page, selectors) -> bool:
+        for frame in page.frames:
+            for selector in selectors:
+                with contextlib.suppress(PlaywrightError):
+                    locator = frame.locator(selector).first
+                    if await locator.count() and await locator.is_visible():
+                        return True
+        return False
 
     async def after_join(self, page: Page) -> None:
         """Called once after admission (open panels, join computer audio)."""
@@ -69,17 +79,36 @@ async def page_text(page: Page) -> str:
     return "\n".join(parts)
 
 
+_MARK = """(patterns) => {
+  const regexes = patterns.map((pattern) => new RegExp(pattern, 'i'))
+  document.querySelectorAll('[data-hattama-target]').forEach((node) => node.removeAttribute('data-hattama-target'))
+  const nodes = [...document.querySelectorAll('button, [role="button"], a[role="button"]')]
+  for (const regex of regexes) {
+    for (const node of nodes) {
+      const label = (node.getAttribute('aria-label') || '').trim()
+      const text = (node.innerText || '').trim()
+      const box = node.getBoundingClientRect()
+      const enabled = !node.disabled && node.getAttribute('aria-disabled') !== 'true'
+      if (enabled && box.width > 0 && box.height > 0 && (regex.test(label) || regex.test(text))) {
+        node.setAttribute('data-hattama-target', '1')
+        return true
+      }
+    }
+  }
+  return false
+}"""
+
+
 async def find_button(page: Page, names):
-    """First visible button (in any frame) whose accessible name matches one of `names`."""
+    """First visible, enabled button in any frame whose aria-label or text matches `names`.
+
+    Matches on the DOM directly: some clients (Teams) keep controls inside aria-hidden
+    containers, where accessibility-tree lookups find nothing.
+    """
     for frame in page.frames:
-        for name in names:
-            with contextlib.suppress(PlaywrightError):
-                locator = frame.get_by_role("button", name=re.compile(name, re.IGNORECASE))
-                count = await locator.count()
-                for index in range(count):
-                    candidate = locator.nth(index)
-                    if await candidate.is_visible():
-                        return candidate
+        with contextlib.suppress(PlaywrightError):
+            if await frame.evaluate(_MARK, list(names)):
+                return frame.locator('[data-hattama-target="1"]').first
     return None
 
 
@@ -87,9 +116,13 @@ async def click_button(page: Page, names, timeout=2000) -> bool:
     button = await find_button(page, names)
     if not button:
         return False
-    with contextlib.suppress(PlaywrightError):
+    try:
         await button.click(timeout=timeout)
         return True
+    except PlaywrightError:
+        with contextlib.suppress(PlaywrightError):
+            await button.evaluate("(node) => node.click()")
+            return True
     return False
 
 

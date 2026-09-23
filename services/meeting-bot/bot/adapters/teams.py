@@ -1,6 +1,8 @@
 import asyncio
 
-from bot.adapters.base import Adapter, click_button, fill_first, list_names
+from playwright.async_api import Error as PlaywrightError
+
+from bot.adapters.base import Adapter, click_button, list_names
 
 
 class TeamsAdapter(Adapter):
@@ -11,20 +13,29 @@ class TeamsAdapter(Adapter):
     denied_text = (r"denied access to the meeting", r"You can't join this meeting", r"Your request to join was declined")
     ended_text = (r"You've been removed from this meeting", r"The meeting has ended", r"You left the meeting", r"Thanks for joining")
     leave_button = (r"^Leave", r"^Hang up")
+    leave_selectors = ('#hangup-button', '[data-tid="hangup-main-btn"]', '[data-tid="call-hangup"]')
 
     async def join(self, page, url, name):
         await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        await asyncio.sleep(4)
-        await click_button(page, (r"Continue on this browser", r"Join on the web instead", r"Use the web app instead"))
-        await asyncio.sleep(5)
-        await click_button(page, (r"Continue without audio or video",))
-        await fill_first(page, ('input[placeholder="Type your name"]', 'input[data-tid="prejoin-display-name-input"]', 'input[aria-label*="name" i]'), name)
-        for label in (r"^Microphone", r"^Mute microphone", r"^Camera", r"^Turn camera off"):
-            await click_button(page, (label,))
-        for _attempt in range(10):
+        # The guest pre-join screen takes 10-20 s to render. Keep "Computer audio" (the
+        # default): the bot must hear the meeting; its own microphone is a silent source.
+        for _attempt in range(45):
+            await asyncio.sleep(2)
+            await click_button(page, (r"Continue on this browser", r"Join on the web instead", r"Use the web app instead"))
+            name_box = page.locator('input[data-tid="prejoin-display-name-input"], input[placeholder="Type your name"]').first
+            if await name_box.count() and await name_box.is_visible() and not await name_box.input_value():
+                await name_box.fill(name)
+                await asyncio.sleep(1)
+            join = page.locator('button[data-tid="prejoin-join-button"]').first
+            if await join.count() and await join.is_enabled():
+                try:
+                    await join.click(timeout=3000)
+                except PlaywrightError:
+                    # Teams keeps an overlay over the pre-join screen; a DOM click still works.
+                    await join.evaluate("(button) => button.click()")
+                return
             if await click_button(page, (r"^Join now",)):
                 return
-            await asyncio.sleep(2)
         raise RuntimeError("Не найдена кнопка «Join now» в Teams: проверьте ссылку и разрешён ли гостевой вход")
 
     async def after_join(self, page):
