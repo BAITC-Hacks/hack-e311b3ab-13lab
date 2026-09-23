@@ -1,5 +1,8 @@
-# Hackathon Team
+# hack-e311b3ab-13lab
+Hackathon team repository for 13Lab
+Team members: Mukhammed Erzhanuly, Arman Nurken, Darkhan Omirbay.
 
-## Team Members
+## Connection check
+GitHub connection verified.
 
-- Mukhammed Erzhanuly
+## something
