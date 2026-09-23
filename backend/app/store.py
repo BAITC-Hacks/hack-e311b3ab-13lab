@@ -77,8 +77,11 @@ def new_meeting(title, meeting_date, audio_key, created_by=None, chair_id=None, 
 
 
 def audio_key(meeting):
-    # Meetings created before object storage only have `audio_file` inside DATA_DIR/audio.
-    return meeting.get("audio_key") or f"audio/{meeting['audio_file']}"
+    """Storage key of the recording, or None when the meeting never got audio (e.g. a
+    live session that ended before any sound). Old meetings only have `audio_file`."""
+    if meeting.get("audio_key"):
+        return meeting["audio_key"]
+    return f"audio/{meeting['audio_file']}" if meeting.get("audio_file") else None
 
 
 def _public_user(row):

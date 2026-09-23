@@ -283,7 +283,9 @@ async def run_pipeline(meeting_id, store, settings, provider, semaphore, blobs):
         path = None
         try:
             store.update(meeting_id, {"error": None})
-            path = await asyncio.to_thread(blobs.checkout, audio_key(meeting))
+            if not (key := audio_key(meeting)):
+                raise FileNotFoundError("no recording")
+            path = await asyncio.to_thread(blobs.checkout, key)
             if meeting.get("asr_segments"):
                 segments = [Segment.model_validate(item) for item in meeting["asr_segments"]]
             else:

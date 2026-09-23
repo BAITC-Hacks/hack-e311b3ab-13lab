@@ -69,6 +69,23 @@ class SeedTests(unittest.TestCase):
         created = seed_users(self.store, "team-password-1", DEFAULT_SEED_FILE)
         self.assertEqual([user["role"] for user in created], ["secretary"])
 
+    def test_demo_meetings_load_once(self):
+        from app.blobs import LocalBlobStore
+        from app.seed import DEMO_DIR, seed_demo_meetings
+
+        blobs = LocalBlobStore(Path(self.directory.name) / "blobs")
+        seed_users(self.store, "team-password-1", self.seed_file)
+        loaded = seed_demo_meetings(self.store, blobs, "team@example.kz")
+        self.assertEqual({meeting["title"] for meeting in loaded}, {"Демо: переговорная, совещание 1", "ozimiz", "test11"})
+        owner = self.store.user_credentials("team@example.kz")[0]["id"]
+        for meeting in loaded:
+            stored = self.store.get(meeting["id"])
+            self.assertEqual(stored["created_by"], owner)
+            self.assertEqual(stored["status"], "ready")
+            self.assertTrue(blobs.exists(stored["audio_key"]))
+        self.assertEqual(seed_demo_meetings(self.store, blobs, "team@example.kz"), [])
+        self.assertTrue((DEMO_DIR / "ozimiz.reference.txt").is_file())
+
     def test_bootstrap_admin_once(self):
         settings = make_settings(self.directory.name, admin_email="admin@example.kz", admin_password="admin-password-1")
         self.assertIsNotNone(bootstrap_admin(self.store, settings))

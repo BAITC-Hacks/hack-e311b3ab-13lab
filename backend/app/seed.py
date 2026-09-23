@@ -43,3 +43,30 @@ def seed_users(store, password, path=DEFAULT_SEED_FILE):
         store.audit("user_created", email=user["email"], role=user["role"], source="seed")
         created.append(user)
     return created
+
+
+DEMO_DIR = Path(__file__).resolve().parents[1] / "seed" / "demo"
+
+
+def seed_demo_meetings(store, blobs, owner_email, directory=DEMO_DIR):
+    """Load demo meetings (with their recordings) that are not in the database yet."""
+    manifest = Path(directory) / "meetings.json"
+    if not manifest.is_file():
+        return []
+    owner = store.user_credentials(owner_email)
+    owner_id = owner[0]["id"] if owner else None
+    loaded = []
+    for meeting in json.loads(manifest.read_text(encoding="utf-8")).get("meetings", []):
+        if store.get(meeting["id"]):
+            continue
+        key = meeting.get("audio_key")
+        if key:
+            audio = Path(directory) / "audio" / Path(key).name
+            if not audio.is_file():
+                logger.warning("Нет записи для демо-совещания %s", meeting["title"])
+                continue
+            blobs.put_bytes(key, audio.read_bytes())
+        store.create(meeting | {"created_by": owner_id})
+        store.audit("meeting_created", meeting_id=meeting["id"], email=owner_email, title=meeting["title"], source="demo")
+        loaded.append(meeting)
+    return loaded

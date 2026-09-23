@@ -103,6 +103,11 @@ class BotSessionTests(AppTestCase):
         failed = self.wait_for(meeting["id"], {"failed"})
         self.assertIn("Сервис бота ответил HTTP 503", failed["error"])
         self.assertEqual(failed["source"]["platform"], "teams")
+        # A meeting that never got audio can still be opened, retried and deleted.
+        self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/audio", "secretary").status_code, 404)
+        self.assertEqual(self.client.post(f"/api/meetings/{meeting['id']}/retry", headers=self.auth("secretary")).status_code, 202)
+        self.assertIn("не найдена", self.wait_for(meeting["id"], {"failed"})["error"])
+        self.assertEqual(self.client.delete(f"/api/meetings/{meeting['id']}", headers=self.auth("secretary")).status_code, 204)
 
     def test_bot_disconnect_ends_the_session(self):
         meeting = self.start_bot("https://us05web.zoom.us/j/123456789?pwd=abc").json()

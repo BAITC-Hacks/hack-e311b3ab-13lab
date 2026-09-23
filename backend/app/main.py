@@ -353,7 +353,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
     async def audio_file(meeting_id: str, user=Depends(current_user)):
         meeting, _ = load(meeting_id, user, MP.LISTEN)
         key = audio_key(meeting)
-        if not await asyncio.to_thread(blobs.exists, key):
+        if not key or not await asyncio.to_thread(blobs.exists, key):
             raise HTTPException(404, "Запись не найдена в хранилище")
         store.audit("audio_opened", user, meeting_id)
         local = blobs.local_path(key)
@@ -535,7 +535,8 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
         meeting, _ = load(meeting_id, user, MP.DELETE)
         if meeting["status"] in ACTIVE_STATUSES:
             raise HTTPException(409, "Дождитесь завершения обработки перед удалением")
-        await asyncio.to_thread(blobs.delete, audio_key(meeting))
+        if key := audio_key(meeting):
+            await asyncio.to_thread(blobs.delete, key)
         await asyncio.to_thread(blobs.delete_prefix, f"protocols/{meeting_id}")
         store.delete(meeting_id)
         store.audit("meeting_deleted", user, meeting_id, title=meeting["title"])
