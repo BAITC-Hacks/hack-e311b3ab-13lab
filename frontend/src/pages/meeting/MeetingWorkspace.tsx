@@ -211,6 +211,16 @@ export function MeetingWorkspace({ meeting }: { meeting: Meeting }) {
             {Boolean(draft.analysis.numeric_fragments?.length) && <p className="mb-2 text-sm text-ink-muted">
               Числовых фрагментов дословно: {draft.analysis.numeric_fragments?.filter((item) => item.included).length}/{draft.analysis.numeric_fragments?.length}. Это не оценка точности фактов.{dirty ? ' После сохранения счётчик будет пересчитан.' : ''}
             </p>}
+            {Boolean(draft.analysis.numeric_fragments?.length) && <details className="mb-3 text-sm">
+              <summary className="cursor-pointer">Проверить числовые фрагменты по источнику</summary>
+              <p className="my-2 text-ink-muted">Это исходные фрагменты ASR, а не подтверждённые факты. Отсутствие дословного совпадения может означать пересказ. Ошибки распознавания проверяются по аудио.</p>
+              <ul className="space-y-2">
+                {draft.analysis.numeric_fragments?.map((item, index) => <li key={`${item.segment_id}:${index}`}>
+                  <button type="button" className="underline" onClick={() => locateSegments([item.segment_id])}>{item.segment_id}</button>
+                  {' — '}{item.text}{' '}<span className="text-ink-muted">({item.included ? 'дословно в саммари' : 'нет полного дословного совпадения'})</span>
+                </li>)}
+              </ul>
+            </details>}
             {editable ? (
               <Textarea rows={5} value={draft.analysis.summary} onChange={(event) => setDraft((current) => ({ ...current, analysis: { ...current.analysis, summary: event.target.value } }))} aria-label="Краткое содержание" />
             ) : (

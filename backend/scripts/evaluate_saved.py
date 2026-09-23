@@ -9,7 +9,7 @@ from app import exports
 from app.config import Settings
 from app.models import Analysis, Segment
 from app.deadlines import ground_deadlines
-from app.quality import numeric_fragments, validate_details, validate_summary_quotes
+from app.quality import numeric_fragments, recover_explicit_owner, validate_details, validate_summary_quotes
 from app.pipeline import Provider
 
 
@@ -30,6 +30,8 @@ async def main():
         started = time.monotonic()
         if args.postprocess_only:
             analysis = ground_deadlines(validate_details(Analysis.model_validate(meeting["analysis"]), segments), meeting["meeting_date"])
+            for action in analysis.actions:
+                recover_explicit_owner(action, segments)
             analysis.summary = validate_summary_quotes(analysis.summary, segments)
             analysis.numeric_fragments = numeric_fragments(segments, analysis.summary)
         else:

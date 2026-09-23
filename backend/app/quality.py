@@ -21,6 +21,44 @@ def source_words(value):
     return " ".join(re.findall(r"\w+|%", value.casefold()))
 
 
+def recover_explicit_owner(action, segments):
+    if action.owner:
+        return
+    candidates = []
+    for segment in segments:
+        if segment.id not in action.segment_ids or normalized(segment.text) not in normalized(action.evidence):
+            continue
+        match = re.match(r"^\s*([А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]*(?:ович|евич|овна|евна)),\s*(.*)", segment.text, re.DOTALL)
+        if not match:
+            continue
+        address, instruction = match.groups()
+        direct = re.match(r"(?:пожалуйста,?\s+)?(?:подготовьте|проведите|организуйте|соберите|свяжитесь|проверьте|направьте)\b", instruction, re.IGNORECASE)
+        followup = re.match(r"ну-ка,\s*подскажите\b", instruction, re.IGNORECASE) and re.search(r"\bвот и проводите,\s*ждем от вас\b", instruction, re.IGNORECASE)
+        other_address = re.search(r"[А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]*(?:ович|евич|овна|евна),", instruction)
+        if (direct or followup) and not other_address:
+            candidates.append((address, segment.text))
+    if len(candidates) == 1:
+        action.owner, action.owner_evidence = candidates[0]
+        action.owner_uncertain = True
+        action.needs_review = True
+        question = "Исполнитель восстановлен из явного обращения в ASR. Подтвердите имя и адресата по аудио."
+        if question not in action.review_questions and len(action.review_questions) < 30:
+            action.review_questions.append(question)
+
+
+def summary_coverage(summary, segments):
+    return {fragment.segment_id + "\n" + fragment.text for fragment in numeric_fragments(segments, summary) if fragment.included}
+
+
+def prefer_summary(previous, candidate, segments):
+    previous_coverage = summary_coverage(previous, segments)
+    candidate_coverage = summary_coverage(candidate, segments)
+    marker = "[Цитата не совпала с источником — требуется проверка]"
+    if candidate_coverage > previous_coverage and candidate.count(marker) <= previous.count(marker):
+        return candidate
+    return previous
+
+
 def validate_summary_quotes(summary, segments):
     transcript = source_words(" ".join(segment.text for segment in segments))
     def checked(match):

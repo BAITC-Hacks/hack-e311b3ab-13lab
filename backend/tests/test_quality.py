@@ -9,10 +9,45 @@ from app.deadlines import ground_deadlines
 from app.exports import docx, markdown
 from app.models import Action, Analysis, DeadlineAlternative, Segment
 from app.pipeline import Provider, validate_evidence
-from app.quality import numeric_fragments
+from app.quality import numeric_fragments, prefer_summary, recover_explicit_owner
 
 
 class QualityTests(unittest.TestCase):
+    def test_recover_direct_addressee_without_claiming_audio_confirmation(self):
+        for quote in ("Нурлан Сагатович, проведите инструктаж.", "Нурлан Сагатович, ну-ка, подскажите нам всем, когда был инструктаж, вот и проводите, ждем от вас на следующей неделе инструктаж."):
+            action = Action(title="Инструктаж", evidence=quote, segment_ids=["s1"])
+            recover_explicit_owner(action, [Segment(id="s1", text=quote)])
+            self.assertEqual(action.owner, "Нурлан Сагатович")
+            self.assertEqual(action.owner_evidence, quote)
+            self.assertTrue(action.owner_uncertain)
+            self.assertTrue(action.needs_review)
+            self.assertIn("по аудио", action.review_questions[0])
+
+    def test_do_not_infer_owner_from_request_to_speak_or_damaged_name(self):
+        for quote in ("Асхат Ерланович, можно добавить? Свяжитесь с Нурланом.", "Нурлан Сагатовича, свяжитесь с Нурланом.", "Солгатович, соберите совещание.", "Нурлан Сагатович, проведите инструктаж. Тимур Болатович, подготовьте отчёт."):
+            action = Action(title="Поручение", evidence=quote, segment_ids=["s1"])
+            recover_explicit_owner(action, [Segment(id="s1", text=quote)])
+            self.assertIsNone(action.owner)
+
+    def test_owner_recovery_requires_own_source_and_preserves_existing_owner(self):
+        quote = "Нурлан Сагатович, проведите инструктаж."
+        action = Action(title="Инструктаж", evidence="Проведите инструктаж.", segment_ids=["s1"])
+        recover_explicit_owner(action, [Segment(id="s1", text=quote)])
+        self.assertIsNone(action.owner)
+        action.evidence = quote
+        action.owner = "Подтверждённый исполнитель"
+        recover_explicit_owner(action, [Segment(id="s1", text=quote)])
+        self.assertEqual(action.owner, "Подтверждённый исполнитель")
+
+    def test_summary_repair_must_keep_every_previously_covered_fragment(self):
+        segments = [Segment(id="s1", text="Загрузка 71%. Потери 8%. Рост 60%.")]
+        first = "Загрузка 71%."
+        self.assertEqual(prefer_summary(first, "Потери 8%. Рост 60%.", segments), first)
+        self.assertEqual(prefer_summary(first, "Другой пересказ. Загрузка 71%.", segments), first)
+        improved = "Загрузка 71%. Потери 8%."
+        self.assertEqual(prefer_summary(first, improved, segments), improved)
+        self.assertEqual(prefer_summary(first, improved + " [Цитата не совпала с источником — требуется проверка]", segments), first)
+
     def test_numbers_require_source_context_not_just_digits(self):
         source = Segment(id="s1", text="Загрузка семьдесят один процент. Потери 8%.")
         fragments = numeric_fragments([source], "Готовность 71%. Потери 8%.")
@@ -64,6 +99,17 @@ class QualityTests(unittest.TestCase):
 
 
 class SummaryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_regressive_corrective_pass_keeps_first_summary(self):
+        provider = Provider(Settings.from_env())
+        responses = iter(["Загрузка 71%.", "Потери 8%."])
+
+        async def request(endpoint, **kwargs):
+            return {"choices": [{"message": {"content": json.dumps({"summary": next(responses)})}}]}
+
+        provider.request = request
+        result = await provider.summarize([Segment(id="s1", text="Загрузка 71%. Потери 8%.")])
+        self.assertEqual(result, "Загрузка 71%.")
+
     async def test_one_corrective_pass_preserves_numeric_context(self):
         provider = Provider(Settings.from_env())
         calls = []
