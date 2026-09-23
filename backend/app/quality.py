@@ -37,6 +37,30 @@ def recover_explicit_owner(action, segments):
         other_address = re.search(r"[А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]*(?:ович|евич|овна|евна),", instruction)
         if (direct or followup) and not other_address:
             candidates.append((address, segment.text))
+            continue
+        vocative = re.match(
+            r"^\s*([А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]+ович)а?,\s*"
+            r"свяжитесь с ([А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё-]+ович)(?:ем|ом)\b",
+            segment.text,
+        )
+        if vocative and normalized(vocative.group(1)) == normalized(vocative.group(2)):
+            candidates.append((vocative.group(1), segment.text))
+    positions = {segment.id: index for index, segment in enumerate(segments)}
+    action_positions = [positions[item] for item in action.segment_ids if item in positions]
+    for left_index, right_index in zip(action_positions, action_positions[1:]):
+        if right_index != left_index + 1:
+            continue
+        joined = f"{segments[left_index].text} {segments[right_index].text}"
+        if normalized(joined) not in normalized(action.evidence):
+            continue
+        continuation = re.match(
+            r"^\s*[А-ЯЁ][а-яё-]+\s+([А-ЯЁ][а-яё-]+ович)а?,\s*"
+            r"свяжитесь с ([А-ЯЁ][а-яё-]+)\s+([А-ЯЁ][а-яё-]+ович)(?:ем|ом)\b",
+            joined,
+        )
+        if continuation and normalized(continuation.group(1)) == normalized(continuation.group(3)):
+            given_name = re.sub(r"(?:ом|ем)$", "", continuation.group(2), flags=re.IGNORECASE)
+            candidates.append((f"{given_name} {continuation.group(3)}", joined))
     if len(candidates) == 1:
         action.owner, action.owner_evidence = candidates[0]
         action.owner_uncertain = True
