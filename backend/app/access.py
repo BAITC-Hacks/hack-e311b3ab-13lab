@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from app.rbac import MeetingPermission as MP, assignee_ids, meeting_permissions
 
 SUMMARY_FIELDS = ("id", "title", "meeting_date", "status", "created_at", "updated_at", "version", "error", "created_by", "chair_id", "participant_ids", "approved_at", "approved_by", "source", "live")
-CONTENT_FIELDS = ("transcript", "segments", "analysis", "speaker_names", "participants_seen")
+CONTENT_FIELDS = ("transcript", "segments", "analysis", "speaker_names", "participants_seen", "source_review")
 LIVE_PUBLIC_FIELDS = ("status", "detail", "connector", "platform", "started_at", "ended_at", "duration_seconds", "failed_windows", "bot_name", "stop_reason")
 
 

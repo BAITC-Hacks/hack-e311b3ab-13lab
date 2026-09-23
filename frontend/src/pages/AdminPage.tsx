@@ -1,16 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { clsx } from 'clsx'
-import { ArrowRight, Check, CircleAlert, CircleCheck, ScrollText, UserCheck, Users, X } from 'lucide-react'
+import { ArrowRight, RefreshCw, Check, CircleAlert, CircleCheck, ScrollText, UserCheck, Users, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { sendJson } from '../api/client'
 import { queryKeys, useAdminOverview } from '../api/queries'
-import type { AdminOverview, MeetingStatus, Role, User } from '../api/types'
+import type { AdminOverview, Role, User } from '../api/types'
 import { ConfirmDialog } from '../components/Dialog'
 import { useToast } from '../components/toast-context'
 import { Badge, Button, Card, EmptyState, Notice, PageHeader, Select, Spinner } from '../components/ui'
 import { formatDateTime } from '../lib/format'
-import { AUDIT_LABELS, ROLE_DESCRIPTIONS, ROLE_LABELS, STATUS_LABELS } from '../lib/labels'
+import { AUDIT_LABELS, ROLE_DESCRIPTIONS, ROLE_LABELS } from '../lib/labels'
+
+import { AdminMetrics } from '../features/admin/AdminMetrics'
 
 const ROLES = Object.keys(ROLE_LABELS) as Role[]
 const REGISTRATION_LABELS = { approval: 'С подтверждением администратором', open: 'Открытая, роль «Участник»', closed: 'Отключена' }
@@ -22,9 +23,10 @@ export function AdminPage() {
     <>
       <PageHeader
         eyebrow="Администрирование"
-        title="Админ-панель"
+        title="Обзор рабочего пространства"
         actions={
           <>
+            <Button variant="secondary" icon={<RefreshCw className="size-4" />} loading={overview.isFetching} onClick={() => void overview.refetch()}>Обновить</Button>
             <Link to="/users" className="inline-flex items-center gap-2 rounded-lg border border-sand-200 bg-white px-4 py-2.5 text-sm hover:bg-sand-100">
               <Users className="size-4" /> Пользователи
             </Link>
@@ -34,7 +36,7 @@ export function AdminPage() {
           </>
         }
       >
-        Заявки на регистрацию, состояние системы и последние действия.
+        Совещания, поручения и команда — вся картина в одном месте.
       </PageHeader>
       {overview.isPending && <Spinner />}
       {overview.isError && <Notice tone="error">{overview.error.message}</Notice>}
@@ -44,26 +46,11 @@ export function AdminPage() {
 }
 
 function Dashboard({ data }: { data: AdminOverview }) {
-  const stats = [
-    { label: 'Активных пользователей', value: data.users.active },
-    { label: 'Ожидают подтверждения', value: data.users.pending, highlight: data.users.pending > 0 },
-    { label: 'Отключено', value: data.users.disabled },
-    { label: 'Совещаний', value: data.meetings.total },
-  ]
   return (
-    <div className="space-y-8">
-      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label} className={clsx('p-5', stat.highlight && 'border-amber-300 bg-amber-50')}>
-            <dt className="text-xs text-ink-muted">{stat.label}</dt>
-            <dd className="mt-1 text-3xl font-bold">{stat.value}</dd>
-          </Card>
-        ))}
-      </dl>
+    <div className="space-y-6 admin-dashboard">
+      <AdminMetrics data={data} />
+      <div className="grid gap-6 lg:grid-cols-2">
 
-      <PendingRegistrations users={data.pending_registrations} mode={data.system.registration_mode} />
-
-      <div className="grid gap-6 lg:grid-cols-3">
         <SystemCard system={data.system} />
         <Card className="p-5">
           <h2 className="font-semibold">Пользователи по ролям</h2>
@@ -74,30 +61,13 @@ function Dashboard({ data }: { data: AdminOverview }) {
                   <span>{ROLE_LABELS[role]}</span>
                   <span className="font-semibold">{data.users.by_role[role] ?? 0}</span>
                 </div>
-                <div className="mt-1 h-1.5 rounded-full bg-sand-100">
-                  <div className="h-1.5 rounded-full bg-forest-700" style={{ width: `${data.users.active ? ((data.users.by_role[role] ?? 0) / data.users.active) * 100 : 0}%` }} />
-                </div>
+                <progress className="admin-progress mt-2" value={data.users.by_role[role] ?? 0} max={data.users.active || 1} aria-label={ROLE_LABELS[role]} />
               </li>
             ))}
           </ul>
         </Card>
-        <Card className="p-5">
-          <h2 className="font-semibold">Совещания по статусам</h2>
-          {data.meetings.total === 0 ? (
-            <p className="mt-4 text-sm text-ink-muted">Совещаний пока нет.</p>
-          ) : (
-            <ul className="mt-4 space-y-2 text-sm">
-              {(Object.entries(data.meetings.by_status) as Array<[MeetingStatus, number]>).map(([status, count]) => (
-                <li key={status} className="flex justify-between">
-                  <span>{STATUS_LABELS[status] ?? status}</span>
-                  <span className="font-semibold">{count}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-4 text-xs text-ink-soft">Содержание протоколов администратору недоступно.</p>
-        </Card>
       </div>
+      <div id="registration-queue"><PendingRegistrations users={data.pending_registrations} mode={data.system.registration_mode} /></div>
 
       <Card className="p-5">
         <div className="flex items-center justify-between">
@@ -106,6 +76,7 @@ function Dashboard({ data }: { data: AdminOverview }) {
             Весь журнал <ArrowRight className="size-4" />
           </Link>
         </div>
+        {data.recent_activity.length === 0 && <p className="mt-4 text-sm text-ink-muted">Действий пока нет.</p>}
         <ul className="mt-3 divide-y divide-sand-200">
           {data.recent_activity.map((entry) => (
             <li key={entry.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm">
@@ -130,7 +101,7 @@ function SystemCard({ system }: { system: AdminOverview['system'] }) {
   ]
   return (
     <Card className="p-5">
-      <h2 className="font-semibold">Состояние системы</h2>
+      <h2 className="font-semibold">Конфигурация сервисов</h2>
       <ul className="mt-4 space-y-2.5 text-sm">
         {checks.map((check) => (
           <li key={check.label} className="flex items-center gap-2">
@@ -140,7 +111,8 @@ function SystemCard({ system }: { system: AdminOverview['system'] }) {
           </li>
         ))}
       </ul>
-      <p className="mt-4 text-xs text-ink-muted">Регистрация: {REGISTRATION_LABELS[system.registration_mode]}</p>
+      <p className="mt-4 text-xs text-ink-muted">Настройки подключения, не проверка доступности сервисов.</p>
+      <p className="mt-2 text-xs text-ink-muted">Регистрация: {REGISTRATION_LABELS[system.registration_mode]}</p>
       <p className="mt-2 text-xs text-ink-muted">
         Миграции: {system.migrations.length}, последняя <code className="rounded bg-sand-100 px-1">{system.migrations.at(-1)?.id ?? '—'}</code>
       </p>

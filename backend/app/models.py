@@ -6,6 +6,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 from app.rbac import Role
 from app.security import MIN_PASSWORD_LENGTH
+from app.source_review import SourceReview
 
 ACTIVE_STATUSES = frozenset({"live", "queued", "transcribing", "diarizing", "analyzing"})
 REVIEWABLE_STATUSES = frozenset({"ready", "approved"})
@@ -35,6 +36,23 @@ class Segment(BaseModel):
     words: list[Word] = Field(default_factory=list)
 
 
+class DeadlineAlternative(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    segment_id: str
+
+
+class NumericFragment(BaseModel):
+    segment_id: str
+    text: str
+    included: bool = False
+
+
+class Correction(BaseModel):
+    original: str = Field(min_length=1, max_length=300)
+    suggestion: str = Field(min_length=1, max_length=300)
+    reason: str = Field(max_length=500)
+
+
 class Action(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=1, max_length=2000)
@@ -45,6 +63,17 @@ class Action(BaseModel):
     segment_ids: list[str] = Field(default_factory=list)
     status: ActionStatus = "open"
     needs_review: bool = True
+    owner_evidence: str | None = Field(default=None, max_length=4000)
+    owner_uncertain: bool = True
+    issued_by: str | None = Field(default=None, max_length=200)
+    issued_by_evidence: str | None = Field(default=None, max_length=4000)
+    deliverable: str | None = Field(default=None, max_length=2000)
+    deliverable_evidence: str | None = Field(default=None, max_length=4000)
+    condition: str | None = Field(default=None, max_length=2000)
+    condition_evidence: str | None = Field(default=None, max_length=4000)
+    deadline_resolution: Literal["unspecified", "resolved", "ambiguous", "event", "conflict", "uncertain", "confirmed"] = "unspecified"
+    deadline_alternatives: list[DeadlineAlternative] = Field(default_factory=list, max_length=20)
+    review_questions: list[str] = Field(default_factory=list, max_length=30)
     # Internal fields. SkipJsonSchema keeps them out of the schema sent to the LLM,
     # and validate_evidence overwrites whatever the model returns for them.
     id: SkipJsonSchema[str | None] = Field(default=None, max_length=64)
@@ -57,12 +86,15 @@ class Analysis(BaseModel):
     decisions: list[str] = Field(default_factory=list, max_length=100)
     actions: list[Action] = Field(default_factory=list, max_length=200)
     warnings: list[str] = Field(default_factory=list, max_length=100)
+    corrections: list[Correction] = Field(default_factory=list, max_length=100)
+    numeric_fragments: list[NumericFragment] = Field(default_factory=list, max_length=1000)
 
 
 class Review(BaseModel):
     version: int = Field(ge=1)
     analysis: Analysis
     speaker_names: dict[str, str] = Field(default_factory=dict, max_length=100)
+    source_review: SourceReview | None = None
 
 
 class LiveStart(BaseModel):

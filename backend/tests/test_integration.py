@@ -49,8 +49,9 @@ class PostgresMinioTests(AppTestCase):
         meeting = self.ready_meeting()
         self.assertEqual(self.get(f"/api/meetings/{meeting['id']}/audio", "secretary").content, b"audio")
         meeting["analysis"]["actions"][0]["assignee_id"] = self.users["participant"]["id"]
-        saved = self.review(meeting)
+        saved = self.review(meeting, source_review={"terms": ["Айжан"], "notes": [{"kind": "speaker", "segment_id": "s1", "text": "Айжан", "audio_checked": True}]})
         self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["source_review"]["notes"][0]["text"], "Айжан")
         self.assertEqual(self.review(meeting).status_code, 409)
         approved = self.approve(saved.json())
         for fmt in approved["approvals"][0]["formats"]:

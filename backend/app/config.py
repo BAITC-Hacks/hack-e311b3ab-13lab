@@ -41,6 +41,11 @@ class Settings:
     bot_token: str = ""
     bot_name: str = "HATTAMA.AI Секретарь"
     bot_callback_base: str = "ws://backend:8000"
+    text_base_url: str = ""
+    text_api_key: str = ""
+    text_enable_thinking: bool | None = None
+    text_max_tokens: int = 12000
+    text_chunk_chars: int = 16000
 
     @classmethod
     def from_env(cls):
@@ -77,4 +82,9 @@ class Settings:
             bot_token=os.getenv("BOT_TOKEN", ""),
             bot_name=os.getenv("BOT_NAME", "HATTAMA.AI Секретарь"),
             bot_callback_base=os.getenv("BOT_CALLBACK_BASE", "ws://backend:8000").rstrip("/"),
+            text_base_url=os.getenv("TEXT_BASE_URL", "").rstrip("/"),
+            text_api_key=os.getenv("TEXT_API_KEY", ""),
+            text_enable_thinking=None if not os.getenv("TEXT_ENABLE_THINKING", "") else _flag("TEXT_ENABLE_THINKING"),
+            text_max_tokens=int(os.getenv("TEXT_MAX_TOKENS", "12000")),
+            text_chunk_chars=int(os.getenv("TEXT_CHUNK_CHARS", "16000")),
         )

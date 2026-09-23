@@ -2,12 +2,23 @@ from io import BytesIO
 from pathlib import Path
 
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
+from app.source_review import review_lines
 
 STATUS_LABELS = {"open": "Открыто", "in_progress": "В работе", "done": "Выполнено"}
 
 
 def _deadline(action):
-    return action["due_date"] or action["deadline_text"] or "Не указан"
+    value = action["due_date"] or action["deadline_text"] or "Не указан"
+    alternatives = [f"{item['text']} [{item['segment_id']}]" for item in action.get("deadline_alternatives", [])]
+    return str(value) + ("; варианты: " + "; ".join(alternatives) if alternatives else "")
+
+
+def _details(action):
+    labels = {"issued_by": "Поручил(а)", "deliverable": "Результат", "condition": "Условие", "owner_evidence": "Основание исполнителя", "deliverable_evidence": "Основание результата", "condition_evidence": "Основание условия"}
+    return [f"{label}: {action[field]}" for field, label in labels.items() if action.get(field)] + action.get("review_questions", [])
 
 
 def _owner(action, people):
@@ -36,7 +47,10 @@ def markdown(meeting, people=None):
     lines += ["", "## Поручения"]
     for index, action in enumerate(analysis["actions"], 1):
         lines.extend([f"### {index}. {action['title']}", f"Ответственный: {_owner(action, people)}", f"Срок: {_deadline(action)}", f"Статус: {STATUS_LABELS.get(action['status'], action['status'])}", f"Цитата: {action['evidence']}", ""])
+        lines.extend(_details(action))
     lines += ["## Замечания"] + [f"- {warning}" for warning in analysis["warnings"]]
+    if review_lines(meeting):
+        lines += ["", "## Ручная сверка с аудио (исходный ASR сохранён)", *review_lines(meeting)]
     lines += ["", "## Транскрипт", meeting["transcript"]]
     return "\n".join(lines)
 
@@ -44,7 +58,13 @@ def markdown(meeting, people=None):
 def docx(meeting, people=None):
     people = people or {}
     document = Document()
-    document.add_heading(meeting["title"], 0)
+    title = document.add_heading(meeting["title"], 0)
+    for run in title.runs:
+        run.font.color.rgb = RGBColor(0, 0, 0)
+        run.font.underline = False
+    for properties in (title._p.get_or_add_pPr(), title.style.element.get_or_add_pPr()):
+        for border in list(properties.findall(qn("w:pBdr"))):
+            properties.remove(border)
     document.add_paragraph(f"Дата совещания: {meeting['meeting_date']}")
     document.add_paragraph(_approval_line(meeting, people))
     if meeting.get("chair_id") in people:
@@ -61,20 +81,38 @@ def docx(meeting, people=None):
     document.add_heading("Поручения", 1)
     table = document.add_table(rows=1, cols=4)
     table.style = "Table Grid"
+    table.autofit = False
+    for column, width in zip(table.columns, (2.7, 1.3, 1.3, 0.7)):
+        column.width = Inches(width)
+    table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
     for cell, label in zip(table.rows[0].cells, ["Поручение", "Ответственный", "Срок", "Статус"]):
         cell.text = label
     for action in analysis["actions"]:
         cells = table.add_row().cells
-        cells[0].text = action["title"]
+        cells[0].text = "\n".join([action["title"], *[f"{label}: {action[field]}" for field, label in (("deliverable", "Результат"), ("condition", "Условие")) if action.get(field)]])
         cells[1].text = _owner(action, people)
         cells[2].text = _deadline(action)
         cells[3].text = STATUS_LABELS.get(action["status"], action["status"])
+    for row in table.rows:
+        row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
+        for cell, width in zip(row.cells, (2.7, 1.3, 1.3, 0.7)):
+            cell.width = Inches(width)
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.space_after = Pt(4)
+                for run in paragraph.runs:
+                    run.font.size = Pt(9)
     document.add_heading("Основания и проверка", 1)
     for index, action in enumerate(analysis["actions"], 1):
         document.add_paragraph(f"{index}. {action['evidence']}")
         document.add_paragraph(f"Проверено: {'нет' if action['needs_review'] else 'да'}")
+        for detail in _details(action):
+            document.add_paragraph(detail)
     for warning in analysis["warnings"]:
         document.add_paragraph(warning)
+    if review_lines(meeting):
+        document.add_heading("Ручная сверка с аудио (исходный ASR сохранён)", 1)
+        for line in review_lines(meeting):
+            document.add_paragraph(line)
     document.add_heading("Транскрипт", 1)
     for segment in meeting["segments"]:
         speaker = meeting.get("speaker_names", {}).get(segment["speaker"], segment["speaker"]) or "Говорящий не определён"
@@ -154,12 +192,18 @@ def pdf(meeting, fonts, people=None):
         heading("Основания")
         for index, action in enumerate(analysis["actions"], 1):
             paragraph(f"{index}. «{action['evidence']}» Проверено: {'нет' if action['needs_review'] else 'да'}.", 9)
+            for detail in _details(action):
+                paragraph(detail, 9)
     else:
         paragraph("Поручения не выделены.")
     if analysis["warnings"]:
         heading("Замечания")
         for warning in analysis["warnings"]:
             paragraph(f"• {warning}", 9)
+    if review_lines(meeting):
+        heading("Ручная сверка с аудио (исходный ASR сохранён)")
+        for line in review_lines(meeting):
+            paragraph(line, 9)
     heading("Транскрипт")
     for segment in meeting["segments"]:
         speaker = meeting.get("speaker_names", {}).get(segment["speaker"], segment["speaker"]) or "Говорящий не определён"
