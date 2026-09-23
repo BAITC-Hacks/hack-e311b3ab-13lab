@@ -66,6 +66,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
     store = store or Store(settings)
     blobs = blobs or make_blob_store(settings)
     provider = provider or Provider(settings)
+    fonts = exports.find_fonts(settings)
     tmp_dir = settings.data_dir / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tasks = set()
@@ -149,7 +150,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
 
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "provider_configured": bool(settings.api_key), "diarization_configured": bool(settings.diarization_model_path)}
+        return {"status": "ok", "provider_configured": bool(settings.api_key), "diarization_configured": bool(settings.diarization_model_path), "pdf_configured": bool(fonts)}
 
     @app.post("/api/auth/login")
     async def login(payload: LoginRequest, request: Request):
@@ -378,17 +379,49 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
         if meeting["version"] != payload.version:
             raise HTTPException(409, "Данные изменились. Обновите страницу перед утверждением.")
         approved_at = now()
+        next_version = payload.version + 1
+        snapshot = meeting | {"status": "approved", "approved_at": approved_at, "approved_by": user["id"]}
+        names = store.user_names()
+        rendered = {"docx": exports.docx(snapshot, names)}
+        warnings = []
+        if fonts:
+            rendered["pdf"] = exports.pdf(snapshot, fonts, names)
+        else:
+            warnings.append("PDF не сохранён: не найден шрифт с кириллицей. Укажите PDF_FONT_PATH.")
+        files = {fmt: f"protocols/{meeting_id}/v{next_version}.{fmt}" for fmt in rendered}
+        try:
+            for fmt, data in rendered.items():
+                await asyncio.to_thread(blobs.put_bytes, files[fmt], data)
+        except Exception:
+            logger.exception("Protocol archive upload failed")
+            raise HTTPException(503, "Хранилище протоколов недоступно")
 
         def change(document):
             document.update({"status": "approved", "approved_at": approved_at, "approved_by": user["id"]})
-            document.setdefault("approvals", []).append({"version": payload.version + 1, "approved_at": approved_at, "approved_by": user["id"], "files": {}})
+            document.setdefault("approvals", []).append({"version": next_version, "approved_at": approved_at, "approved_by": user["id"], "files": files})
 
         try:
             result = store.update(meeting_id, change, payload.version)
         except ValueError:
+            for key in files.values():
+                await asyncio.to_thread(blobs.delete, key)
             raise HTTPException(409, "Данные изменились. Обновите страницу перед утверждением.")
-        store.audit("meeting_approved", user, meeting_id, version=result["version"])
-        return present(result, meeting_permissions(user, result))
+        store.audit("meeting_approved", user, meeting_id, version=result["version"], files=sorted(files))
+        return present(result, meeting_permissions(user, result)) | {"warnings": warnings}
+
+    @app.get("/api/meetings/{meeting_id}/approved/{format}")
+    async def approved_file(meeting_id: str, format: str, user=Depends(current_user)):
+        meeting, _ = load(meeting_id, user, MP.EXPORT)
+        approvals = meeting.get("approvals", [])
+        key = approvals[-1].get("files", {}).get(format) if approvals else None
+        if not key:
+            raise HTTPException(404, "Утверждённая копия в этом формате не найдена")
+        if not await asyncio.to_thread(blobs.exists, key):
+            raise HTTPException(404, "Утверждённая копия не найдена в хранилище")
+        data = await asyncio.to_thread(blobs.get_bytes, key)
+        store.audit("approved_copy_downloaded", user, meeting_id, format=format, version=approvals[-1]["version"])
+        headers = {"Content-Disposition": f'attachment; filename="protocol-{meeting_id}-v{approvals[-1]["version"]}.{format}"'}
+        return Response(data, media_type=media_type(key), headers=headers)
 
     @app.post("/api/meetings/{meeting_id}/reopen")
     async def reopen(meeting_id: str, user=Depends(current_user)):
@@ -412,6 +445,10 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
             response = Response(exports.markdown(meeting, names), media_type="text/markdown; charset=utf-8", headers=headers)
         elif format == "docx":
             response = Response(exports.docx(meeting, names), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers=headers)
+        elif format == "pdf":
+            if not fonts:
+                raise HTTPException(503, "PDF недоступен: не найден шрифт с кириллицей. Укажите PDF_FONT_PATH.")
+            response = Response(exports.pdf(meeting, fonts, names), media_type="application/pdf", headers=headers)
         elif format == "json":
             response = Response(json.dumps(meeting, ensure_ascii=False, indent=2), media_type="application/json", headers=headers)
         else:

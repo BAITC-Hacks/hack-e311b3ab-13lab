@@ -40,15 +40,17 @@ python -m scripts.create_user --email admin@example.kz --name "Админист�
 
 Запускайте **один процесс** Uvicorn без `--workers` и без `--reload` во время обработки. Очередь выполняется внутри этого процесса. При перезапуске незавершённые задания получают статус ошибки и доступны для ручного повтора.
 
-### Docker
+### Docker: PostgreSQL + MinIO
 
-После заполнения `.env`:
+В `.env` дополнительно задайте `POSTGRES_PASSWORD`, `MINIO_ROOT_USER` и `MINIO_ROOT_PASSWORD`, затем:
 
 ```bash
 docker compose up --build
 ```
 
-Порт опубликован только на loopback; записи и SQLite сохраняются в named volume. Базовый образ не содержит тяжёлых зависимостей диаризации. Docker-конфигурация поставляется, но сборка в текущей среде не проверялась.
+Поднимаются три сервиса: приложение на `127.0.0.1:8000`, PostgreSQL 16 (порт наружу не публикуется) и MinIO (консоль на `127.0.0.1:9001`). Метаданные, пользователи и журнал хранятся в PostgreSQL, записи и утверждённые протоколы в bucket MinIO. Образ MinIO берётся из `quay.io`, так как на Docker Hub он больше не публикуется. В образ приложения входит шрифт DejaVu для PDF. Приложение использует root-учётную запись MinIO; для production заведите отдельного пользователя с доступом только к своему bucket.
+
+Без `DATABASE_URL` и `MINIO_ENDPOINT` приложение работает на SQLite и локальных файлах в `DATA_DIR`. Старая база `meetings.sqlite3` переносится в новую схему автоматически, прежняя таблица остаётся как `meetings_legacy`.
 
 ## Сценарий работы
 
@@ -75,6 +77,12 @@ docker compose up --build
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | пусто | Первый администратор, создаётся только если активного администратора нет |
 | `SESSION_HOURS` | `12` | Время жизни сессии после входа |
 | `DIARIZATION_MODEL_PATH` | пусто | Локальный каталог модели pyannote |
+| `DATABASE_URL` | пусто | PostgreSQL, например `postgresql://user:pass@host:5432/qorytyn`; пусто означает SQLite в `DATA_DIR` |
+| `MINIO_ENDPOINT` | пусто | Адрес MinIO / S3, например `minio:9000`; пусто означает файлы в `DATA_DIR` |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | пусто | Учётные данные хранилища |
+| `MINIO_BUCKET` | `qorytyn` | Bucket создаётся при запуске, если его нет |
+| `MINIO_SECURE` | `false` | HTTPS к хранилищу |
+| `PDF_FONT_PATH` / `PDF_FONT_BOLD_PATH` | пусто | TTF со шрифтом кириллицы; без них ищутся DejaVu, Arial |
 
 `.env` загружается через shell или Docker Compose, а не автоматически приложением. Приложение не использует OpenAI/NVIDIA API и не тратит их кредиты.
 
@@ -112,6 +120,16 @@ python -m unittest discover -s tests -v
 
 Тесты не требуют сети и не используют настоящие ключи. Они проверяют вход и сессии, матрицу ролей, утверждение протокола, статусы поручений исполнителями, журнал действий, ограничение загрузок, подтверждение уведомления, конфликт версий, структуру DOCX, проверку цитат, сроки, миграцию старой базы и отсутствие выдуманных timestamps.
 
+Проверка на PostgreSQL и MinIO (тест удаляет и пересоздаёт таблицы в указанной базе):
+
+```bash
+docker run -d --name qorytyn-test-pg -e POSTGRES_USER=qorytyn -e POSTGRES_PASSWORD=test-secret -e POSTGRES_DB=qorytyn -p 127.0.0.1:55432:5432 postgres:16-alpine
+docker run -d --name qorytyn-test-minio -e MINIO_ROOT_USER=qorytyn -e MINIO_ROOT_PASSWORD=test-secret-minio -p 127.0.0.1:59000:9000 quay.io/minio/minio server /data
+QORYTYN_TEST_DATABASE_URL=postgresql://qorytyn:test-secret@127.0.0.1:55432/qorytyn \
+QORYTYN_TEST_MINIO_ENDPOINT=127.0.0.1:59000 QORYTYN_TEST_MINIO_ACCESS_KEY=qorytyn \
+QORYTYN_TEST_MINIO_SECRET_KEY=test-secret-minio python -m unittest tests.test_integration -v
+```
+
 Реальный прогон с сервером моделей:
 
 ```bash
@@ -140,7 +158,8 @@ python -m scripts.smoke /path/to/meeting.mp3 --meeting-date 2026-09-23
 | PUT | `/api/meetings/{id}/people` | `chair_id`, `participant_ids` |
 | POST | `/api/meetings/{id}/approve` / `reopen` | Утверждение с проверкой `version` / возврат на доработку |
 | PATCH | `/api/meetings/{id}/actions/{action_id}` | Статус поручения |
-| GET | `/api/meetings/{id}/export/{format}` | `docx`, `md`, `json` |
+| GET | `/api/meetings/{id}/export/{format}` | `docx`, `md`, `pdf`, `json` из текущего состояния |
+| GET | `/api/meetings/{id}/approved/{format}` | Копия `docx` / `pdf`, сохранённая в хранилище при последнем утверждении |
 | GET | `/api/me/actions` | Поручения текущего пользователя в утверждённых протоколах |
 
 Все маршруты кроме health и login требуют `Authorization: Bearer <token>`.
@@ -151,7 +170,7 @@ python -m scripts.smoke /path/to/meeting.mp3 --meeting-date 2026-09-23
 
 Для настоящего закрытого контура модели ASR **и** LLM должны находиться в разрешённой сети заказчика. Название self-hosted само по себе не гарантирует сетевую изоляцию: адрес, логи и политики хранения проверяются при развёртывании. Прототип не шифрует SQLite и аудио на диске, не содержит политики удаления и SSO; журнал фиксирует действия, но не хранит прежние версии текста. Для демонстрации реальных записей нужна анонимизация.
 
-Пока не реализованы: подключение участником Zoom/Teams/Meet, live-поток, автоматическая рассылка напоминаний, интеграция с СЭД, PDF-экспорт. DOCX закрывает альтернативный формат экспорта из ТЗ; визуальная проверка печатного оформления ещё требуется. Чисто казахский и смешанный end-to-end наборы, WER и DER пока не измерены. На длинных встречах анализ идёт частями, поэтому межчастные изменения сроков требуют проверки.
+Пока не реализованы: подключение участником Zoom/Teams/Meet, live-поток, автоматическая рассылка напоминаний, интеграция с СЭД. PDF и DOCX формируются; при утверждении обе копии сохраняются в хранилище. Визуальная проверка печатного оформления DOCX ещё требуется. Чисто казахский и смешанный end-to-end наборы, WER и DER пока не измерены. На длинных встречах анализ идёт частями, поэтому межчастные изменения сроков требуют проверки.
 
 ## something
 
