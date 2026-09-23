@@ -47,7 +47,7 @@ def make_engine(settings):
     return create_engine(url, json_serializer=serializer, pool_pre_ping=True)
 
 
-def new_meeting(title, meeting_date, audio_key, created_by=None, chair_id=None):
+def new_meeting(title, meeting_date, audio_key, created_by=None, chair_id=None, source=None):
     timestamp = now()
     return {
         "id": uuid.uuid4().hex,
@@ -70,6 +70,7 @@ def new_meeting(title, meeting_date, audio_key, created_by=None, chair_id=None):
         "approved_at": None,
         "approved_by": None,
         "approvals": [],
+        "source": source or {"type": "upload"},
     }
 
 

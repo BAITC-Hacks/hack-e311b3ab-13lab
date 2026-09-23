@@ -7,7 +7,7 @@ from pydantic.json_schema import SkipJsonSchema
 from app.rbac import Role
 from app.security import MIN_PASSWORD_LENGTH
 
-ACTIVE_STATUSES = frozenset({"queued", "transcribing", "diarizing", "analyzing"})
+ACTIVE_STATUSES = frozenset({"live", "queued", "transcribing", "diarizing", "analyzing"})
 REVIEWABLE_STATUSES = frozenset({"ready", "approved"})
 ActionStatus = Literal["open", "in_progress", "done"]
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
@@ -63,6 +63,16 @@ class Review(BaseModel):
     version: int = Field(ge=1)
     analysis: Analysis
     speaker_names: dict[str, str] = Field(default_factory=dict, max_length=100)
+
+
+class LiveStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=200)
+    meeting_date: date
+    recording_consent: bool
+    source: Literal["tab", "bot"]
+    meeting_url: str | None = Field(default=None, max_length=2000)
+    platform: Literal["google_meet", "teams", "zoom", "browser", "room"] | None = None
 
 
 class Approval(BaseModel):

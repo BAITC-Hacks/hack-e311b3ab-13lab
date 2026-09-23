@@ -12,6 +12,9 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from app import exports
+from app.access import load_meeting, present_meeting
+from app.live.manager import LiveManager
+from app.routes.live import router as live_router
 from app.blobs import make_blob_store, media_type
 from app.config import Settings
 from app.models import ACTIVE_STATUSES, REVIEWABLE_STATUSES, ActionUpdate, Approval, LoginRequest, PasswordChange, People, Registration, RegistrationApproval, Review, UserCreate, UserUpdate
@@ -26,8 +29,6 @@ logger = logging.getLogger("hattama")
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".mp4"}
 REGISTRATION_MODES = {"approval", "open", "closed"}
 INTERRUPTED = "Обработка прервана перезапуском сервера. Нажмите «Повторить»."
-SUMMARY_FIELDS = ("id", "title", "meeting_date", "status", "created_at", "updated_at", "version", "error", "created_by", "chair_id", "participant_ids", "approved_at", "approved_by")
-CONTENT_FIELDS = ("transcript", "segments", "analysis", "speaker_names")
 CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 
 
@@ -81,9 +82,11 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
     @asynccontextmanager
     async def lifespan(application):
         await asyncio.to_thread(blobs.prepare)
+        await live.recover()
         store.mark_interrupted(INTERRUPTED)
         bootstrap_admin(store, settings)
         yield
+        await live.shutdown()
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -107,33 +110,19 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
         return response
 
     def load(meeting_id, user, needed=MP.VIEW):
-        meeting = store.get(meeting_id)
-        permissions = meeting_permissions(user, meeting) if meeting else frozenset()
-        if MP.VIEW not in permissions:
-            raise HTTPException(404, "Совещание не найдено")
-        if needed not in permissions:
-            raise HTTPException(403, "Недостаточно прав для этого действия")
-        return meeting, permissions
-
-    def people_for(meeting, names):
-        ids = {meeting.get("created_by"), meeting.get("chair_id"), meeting.get("approved_by"), *meeting.get("participant_ids", []), *assignee_ids(meeting)}
-        ids |= {approval.get("approved_by") for approval in meeting.get("approvals", [])}
-        return {user_id: names[user_id] for user_id in ids if user_id in names}
+        return load_meeting(store, meeting_id, user, needed)
 
     def present(meeting, permissions):
-        result = {field: meeting.get(field) for field in SUMMARY_FIELDS}
-        result["participant_ids"] = result["participant_ids"] or []
-        result["permissions"] = sorted(permissions)
-        result["people"] = people_for(meeting, store.user_names())
-        result["approvals"] = [{key: value for key, value in approval.items() if key != "files"} | {"formats": sorted(approval.get("files", {}))} for approval in meeting.get("approvals", [])]
-        if MP.READ in permissions:
-            result.update({field: meeting.get(field) for field in CONTENT_FIELDS})
-        return result
+        return present_meeting(store, meeting, permissions)
 
     def schedule(meeting_id):
         task = asyncio.create_task(run_pipeline(meeting_id, store, settings, provider, semaphore, blobs))
         tasks.add(task)
         task.add_done_callback(tasks.discard)
+
+    live = LiveManager(store, settings, provider, blobs, schedule)
+    app.state.live = live
+    app.include_router(live_router)
 
     def active_user(user_id, message):
         user = store.get_user(user_id)
@@ -145,7 +134,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
 
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "provider_configured": bool(settings.api_key), "diarization_configured": bool(settings.diarization_url or settings.diarization_model_path), "pdf_configured": bool(fonts)}
+        return {"status": "ok", "provider_configured": bool(settings.api_key), "diarization_configured": bool(settings.diarization_url or settings.diarization_model_path), "pdf_configured": bool(fonts), "bot_configured": bool(settings.bot_service_url and settings.bot_token), "live_max_sessions": settings.live_max_sessions}
 
     @app.post("/api/auth/login")
     async def login(payload: LoginRequest, request: Request):

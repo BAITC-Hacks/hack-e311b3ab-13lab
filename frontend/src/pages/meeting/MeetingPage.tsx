@@ -12,6 +12,7 @@ import { useToast } from '../../components/toast-context'
 import { Button, Card, EmptyState, Notice, Spinner, StatusBadge } from '../../components/ui'
 import { formatDate } from '../../lib/format'
 import { ACTIVE_STATUSES, PROCESSING_STEPS, STATUS_LABELS } from '../../lib/labels'
+import { LiveView } from '../live/LiveView'
 import { MeetingWorkspace } from './MeetingWorkspace'
 
 export function MeetingPage() {
@@ -95,7 +96,8 @@ function MeetingView({ meeting }: { meeting: Meeting }) {
         </div>
       </div>
 
-      {active && <ProcessingCard meeting={meeting} />}
+      {meeting.status === 'live' && can('read') && <LiveView meeting={meeting} />}
+      {active && meeting.status !== 'live' && <ProcessingCard meeting={meeting} />}
 
       {meeting.status === 'failed' && (
         <div className="space-y-3">

@@ -6,6 +6,7 @@ import { AuditPage } from './pages/AuditPage'
 import { LoginPage } from './pages/LoginPage'
 import { MeetingPage } from './pages/meeting/MeetingPage'
 import { MeetingsPage } from './pages/MeetingsPage'
+import { LiveStartPage } from './pages/live/LiveStartPage'
 import { NewMeetingPage } from './pages/NewMeetingPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -29,6 +30,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission permission="meetings:create">
             <NewMeetingPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'live/new',
+        element: (
+          <RequirePermission permission="meetings:create">
+            <LiveStartPage />
           </RequirePermission>
         ),
       },

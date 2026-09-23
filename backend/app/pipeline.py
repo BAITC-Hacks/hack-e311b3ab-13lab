@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
@@ -10,6 +11,16 @@ from app.deadlines import ground_deadlines
 from app.diarization import Turn, align_speakers, remote_diarize
 from app.models import Analysis, Segment, Word
 from app.store import audio_key
+
+
+logger = logging.getLogger("hattama")
+
+
+def strip_fences(content):
+    content = content.strip()
+    if content.startswith("```"):
+        content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content)
+    return content
 
 
 def normalize(value):
@@ -90,6 +101,8 @@ class Provider:
                 headers={"Authorization": f"Bearer {self.settings.api_key}"},
                 **kwargs,
             )
+            if response.is_error:
+                logger.warning("Model service %s returned HTTP %s: %s", endpoint, response.status_code, response.text[:200])
             response.raise_for_status()
             return response.json()
 
@@ -115,6 +128,7 @@ class Provider:
         if batch:
             batches.append(batch)
         results = []
+        review_unavailable = False
         for chunk in batches:
             payload = {"meeting_date": meeting_date, "title": title, "segments": [segment.model_dump(exclude={"words", "speaker_uncertain"}) for segment in chunk]}
             messages = [
@@ -132,12 +146,33 @@ class Provider:
                 {"role": "assistant", "content": content},
                 {"role": "user", "content": "Проверь черновик по исходным сегментам. Найди пропущенные поручения, исправь перепутанных исполнителей. evidence копируй дословно, сохраняя пунктуацию и ошибки распознавания: нельзя исправлять текст цитаты. Срок в итоговом согласовании важнее предварительного. Сохрани неизвестные данные как null. Верни полный исправленный JSON по той же схеме."},
             ])
-            checked = await self.request("/chat/completions", json={"model": self.settings.text_model, "temperature": 0, "max_tokens": 6500, "messages": messages})
-            content = checked["choices"][0]["message"]["content"].strip()
-            if content.startswith("```"):
-                content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content)
-            results.append(Analysis.model_validate_json(content))
+            first_draft = content
+            checked = None
+            for budget in (6500, 2500):
+                try:
+                    checked = await self.request("/chat/completions", json={"model": self.settings.text_model, "temperature": 0, "max_tokens": budget, "messages": messages})
+                    break
+                except httpx.HTTPStatusError as error:
+                    if error.response.status_code < 500:
+                        raise
+            if checked is not None:
+                content = checked["choices"][0]["message"]["content"].strip()
+            else:
+                # The review pass is a second opinion; the evidence check still runs on the draft.
+                content = first_draft
+                review_unavailable = True
+            content = strip_fences(content)
+            try:
+                parsed = Analysis.model_validate_json(content)
+            except ValueError:
+                if content == strip_fences(first_draft):
+                    raise
+                parsed = Analysis.model_validate_json(strip_fences(first_draft))
+                review_unavailable = True
+            results.append(parsed)
         combined = Analysis(summary="\n\n".join(result.summary for result in results), decisions=[item for result in results for item in result.decisions], actions=[item for result in results for item in result.actions], warnings=[item for result in results for item in result.warnings])
+        if review_unavailable:
+            combined.warnings.append("Второй проход проверки поручений недоступен (ошибка сервиса моделей): поручения извлечены одним проходом, проверьте их особенно внимательно.")
         if len(batches) > 1:
             combined.warnings.append("Длинная запись обработана частями: проверьте повторы и изменения поручений между частями.")
         return ground_deadlines(validate_evidence(combined, segments), meeting_date)
@@ -174,7 +209,13 @@ async def run_pipeline(meeting_id, store, settings, provider, semaphore, blobs):
                     "asr_segments": [segment.model_dump() for segment in segments]})
             store.update(meeting_id, {"segments": [segment.model_dump() for segment in segments], "status": "diarizing"})
             warnings = []
-            if settings.diarization_url:
+            duration = max((segment.end or 0 for segment in segments), default=0)
+            live_source = (meeting.get("source") or {}).get("type") in ("tab", "bot")
+            if (meeting.get("live") or {}).get("failed_windows"):
+                warnings.append(f"Не распознано фрагментов онлайн-сессии: {meeting['live']['failed_windows']}. Проверьте транскрипт по записи.")
+            if live_source and settings.diarization_url and duration > settings.diarization_max_seconds:
+                warnings.append(f"Запись длиннее {settings.diarization_max_seconds // 60} мин: диаризация на GPU пропущена, говорящих назначьте по записи.")
+            elif settings.diarization_url:
                 if meeting.get("diarization") and meeting.get("diarized_segments"):
                     segments = [Segment.model_validate(item) for item in meeting["diarized_segments"]]
                 else:

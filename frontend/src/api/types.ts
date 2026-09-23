@@ -13,7 +13,7 @@ export type MeetingPermission =
   | 'export_raw'
   | 'retry'
   | 'delete'
-export type MeetingStatus = 'queued' | 'transcribing' | 'diarizing' | 'analyzing' | 'ready' | 'approved' | 'failed'
+export type MeetingStatus = 'live' | 'queued' | 'transcribing' | 'diarizing' | 'analyzing' | 'ready' | 'approved' | 'failed'
 export type ActionStatus = 'open' | 'in_progress' | 'done'
 export type ExportFormat = 'docx' | 'md' | 'pdf' | 'json'
 
@@ -98,7 +98,39 @@ export interface Meeting extends MeetingSummary {
   analysis?: Analysis | null
   speaker_names?: Record<string, string>
   warnings?: string[]
+  source?: MeetingSource
+  live?: LiveInfo | null
+  participants_seen?: Array<{ platform_id: string; name: string }>
 }
+
+export type Platform = 'google_meet' | 'teams' | 'zoom' | 'browser' | 'room'
+
+export interface MeetingSource {
+  type: 'upload' | 'tab' | 'bot'
+  platform?: Platform
+}
+
+export interface LiveInfo {
+  status: string
+  detail?: string
+  connector: 'tab' | 'bot'
+  platform: Platform
+  started_at: string
+  ended_at?: string
+  duration_seconds?: number
+  failed_windows?: number
+  bot_name?: string | null
+}
+
+export type LiveEvent =
+  | { type: 'snapshot'; meeting: Meeting }
+  | { type: 'segments'; segments: Segment[]; lag_seconds?: number }
+  | { type: 'status'; status: string; detail?: string }
+  | { type: 'participants'; participants: Array<{ platform_id: string; name: string }>; present: string[] }
+  | { type: 'speaker'; name: string; platform_id: string; at: number }
+  | { type: 'warning'; message: string }
+  | { type: 'finished'; status: MeetingStatus }
+  | { type: 'ping' }
 
 export interface MyAction {
   meeting_id: string
@@ -122,6 +154,8 @@ export interface Health {
   provider_configured: boolean
   diarization_configured: boolean
   pdf_configured: boolean
+  bot_configured?: boolean
+  live_max_sessions?: number
 }
 
 export type RegistrationMode = 'approval' | 'open' | 'closed'

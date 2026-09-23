@@ -8,3 +8,5 @@ sqlalchemy==2.0.54
 psycopg[binary]==3.2.13
 minio==7.2.20
 fpdf2==2.8.8
+sherpa-onnx==1.13.8
+wsproto==1.2.0

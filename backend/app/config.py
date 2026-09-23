@@ -32,6 +32,14 @@ class Settings:
     pdf_font_path: str = ""
     pdf_font_bold_path: str = ""
     registration_mode: str = "approval"
+    diarization_max_seconds: int = 600
+    vad_model_path: str = ""
+    live_max_sessions: int = 2
+    live_max_minutes: int = 180
+    live_idle_seconds: int = 120
+    bot_service_url: str = ""
+    bot_token: str = ""
+    bot_name: str = "HATTAMA.AI Секретарь"
 
     @classmethod
     def from_env(cls):
@@ -59,4 +67,12 @@ class Settings:
             pdf_font_path=os.getenv("PDF_FONT_PATH", ""),
             pdf_font_bold_path=os.getenv("PDF_FONT_BOLD_PATH", ""),
             registration_mode=os.getenv("REGISTRATION_MODE", "approval").strip().lower(),
+            diarization_max_seconds=int(os.getenv("DIARIZATION_MAX_SECONDS", "600")),
+            vad_model_path=os.getenv("VAD_MODEL_PATH", ""),
+            live_max_sessions=int(os.getenv("LIVE_MAX_SESSIONS", "2")),
+            live_max_minutes=int(os.getenv("LIVE_MAX_MINUTES", "180")),
+            live_idle_seconds=int(os.getenv("LIVE_IDLE_SECONDS", "120")),
+            bot_service_url=os.getenv("BOT_SERVICE_URL", "").rstrip("/"),
+            bot_token=os.getenv("BOT_TOKEN", ""),
+            bot_name=os.getenv("BOT_NAME", "HATTAMA.AI Секретарь"),
         )

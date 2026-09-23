@@ -1,9 +1,10 @@
 import type { ActionStatus, MeetingStatus, Role } from '../api/types'
 
-export const ACTIVE_STATUSES: ReadonlySet<MeetingStatus> = new Set(['queued', 'transcribing', 'diarizing', 'analyzing'])
+export const ACTIVE_STATUSES: ReadonlySet<MeetingStatus> = new Set(['live', 'queued', 'transcribing', 'diarizing', 'analyzing'])
 export const PROCESSING_STEPS: MeetingStatus[] = ['queued', 'transcribing', 'diarizing', 'analyzing']
 
 export const STATUS_LABELS: Record<MeetingStatus, string> = {
+  live: 'Онлайн-сессия',
   queued: 'В очереди',
   transcribing: 'Распознаём речь',
   diarizing: 'Обрабатываем говорящих',
@@ -17,6 +18,24 @@ export const ACTION_STATUS_LABELS: Record<ActionStatus, string> = {
   open: 'Открыто',
   in_progress: 'В работе',
   done: 'Выполнено',
+}
+
+export const PLATFORM_LABELS: Record<string, string> = {
+  google_meet: 'Google Meet',
+  teams: 'Microsoft Teams',
+  zoom: 'Zoom',
+  browser: 'Вкладка браузера',
+  room: 'Переговорная (микрофон)',
+}
+
+export const LIVE_STATUS_LABELS: Record<string, string> = {
+  joining: 'Подключение',
+  lobby: 'В зале ожидания: впустите бота',
+  waiting_audio: 'Ожидание звука из вкладки',
+  joined: 'Подключён',
+  live: 'Идёт ИИ-расшифровка',
+  ended: 'Совещание завершено',
+  error: 'Ошибка подключения',
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
