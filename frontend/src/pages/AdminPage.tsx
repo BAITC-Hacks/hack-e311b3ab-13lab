@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, RefreshCw, Check, CircleAlert, CircleCheck, ScrollText, UserCheck, Users, X } from 'lucide-react'
+import { ArrowRight, RefreshCw, Check, CircleAlert, CircleCheck, FilePlus2, Radio, ScrollText, UserCheck, Users, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { sendJson } from '../api/client'
@@ -26,6 +26,12 @@ export function AdminPage() {
         title="Обзор рабочего пространства"
         actions={
           <>
+            <Link to="/live/new" className="inline-flex items-center gap-2 rounded-lg bg-lime-300 px-4 py-2.5 text-sm font-semibold text-forest-900 hover:bg-lime-400">
+              <Radio className="size-4" /> Онлайн-совещание
+            </Link>
+            <Link to="/meetings/new" className="inline-flex items-center gap-2 rounded-lg border border-sand-200 bg-white px-4 py-2.5 text-sm hover:bg-sand-100">
+              <FilePlus2 className="size-4" /> Загрузить запись
+            </Link>
             <Button variant="secondary" icon={<RefreshCw className="size-4" />} loading={overview.isFetching} onClick={() => void overview.refetch()}>Обновить</Button>
             <Link to="/users" className="inline-flex items-center gap-2 rounded-lg border border-sand-200 bg-white px-4 py-2.5 text-sm hover:bg-sand-100">
               <Users className="size-4" /> Пользователи
