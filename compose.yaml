@@ -8,6 +8,7 @@ x-backend-environment: &backend-environment
   MINIO_BUCKET: ${MINIO_BUCKET:-hattama}
   MINIO_SECURE: "false"
   DATA_DIR: /app/data
+  BOT_SERVICE_URL: http://meeting-bot:8100
 
 services:
   frontend:
@@ -51,6 +52,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+
+  # Joins Google Meet, Teams and Zoom web clients as a participant. Internal only.
+  meeting-bot:
+    build: ./services/meeting-bot
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN in .env}
+      BOT_MAX_SESSIONS: ${LIVE_MAX_SESSIONS:-2}
+      BOT_DEBUG: ${BOT_DEBUG:-0}
+    volumes:
+      - ./secrets:/secrets
+      - ./bot-debug:/debug
+    shm_size: 1gb
+    restart: unless-stopped
   postgres:
     image: postgres:16-alpine
     environment:

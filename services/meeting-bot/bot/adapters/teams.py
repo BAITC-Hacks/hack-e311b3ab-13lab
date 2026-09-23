@@ -1,0 +1,49 @@
+import asyncio
+
+from bot.adapters.base import Adapter, click_button, fill_first, list_names
+
+
+class TeamsAdapter(Adapter):
+    """Microsoft Teams web client, joined as a guest (or with a stored account)."""
+
+    platform = "teams"
+    lobby_text = (r"Someone in the meeting should let you in soon", r"When the meeting starts, we'll let people know you're waiting", r"waiting for (someone|people) to let you in")
+    denied_text = (r"denied access to the meeting", r"You can't join this meeting", r"Your request to join was declined")
+    ended_text = (r"You've been removed from this meeting", r"The meeting has ended", r"You left the meeting", r"Thanks for joining")
+    leave_button = (r"^Leave", r"^Hang up")
+
+    async def join(self, page, url, name):
+        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        await asyncio.sleep(4)
+        await click_button(page, (r"Continue on this browser", r"Join on the web instead", r"Use the web app instead"))
+        await asyncio.sleep(5)
+        await click_button(page, (r"Continue without audio or video",))
+        await fill_first(page, ('input[placeholder="Type your name"]', 'input[data-tid="prejoin-display-name-input"]', 'input[aria-label*="name" i]'), name)
+        for label in (r"^Microphone", r"^Mute microphone", r"^Camera", r"^Turn camera off"):
+            await click_button(page, (label,))
+        for _attempt in range(10):
+            if await click_button(page, (r"^Join now",)):
+                return
+            await asyncio.sleep(2)
+        raise RuntimeError("Не найдена кнопка «Join now» в Teams: проверьте ссылку и разрешён ли гостевой вход")
+
+    async def after_join(self, page):
+        await click_button(page, (r"^People", r"^Show participants", r"^Participants"))
+
+    async def participants(self, page):
+        return await list_names(page, '[data-tid^="participantsInCall"] [role="treeitem"], [role="treeitem"][aria-label]', "aria-label")
+
+    async def speaking(self, page):
+        names = await list_names(page, '[data-tid="voice-level-stream-outline"][data-is-speaking="true"], [aria-label*="speaking" i]', "aria-label")
+        return [item["name"].replace(", speaking", "").strip() for item in names]
+
+    async def announce(self, page, message):
+        if not await click_button(page, (r"^Chat", r"^Show conversation")):
+            return False
+        await asyncio.sleep(2)
+        box = page.locator('[role="textbox"][contenteditable="true"]').first
+        if not await box.count():
+            return False
+        await box.fill(message, timeout=3000)
+        await box.press("Enter")
+        return True

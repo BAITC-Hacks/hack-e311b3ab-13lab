@@ -6,7 +6,7 @@ from app.rbac import MeetingPermission as MP, assignee_ids, meeting_permissions
 
 SUMMARY_FIELDS = ("id", "title", "meeting_date", "status", "created_at", "updated_at", "version", "error", "created_by", "chair_id", "participant_ids", "approved_at", "approved_by", "source", "live")
 CONTENT_FIELDS = ("transcript", "segments", "analysis", "speaker_names", "participants_seen")
-LIVE_PUBLIC_FIELDS = ("status", "detail", "connector", "platform", "started_at", "ended_at", "duration_seconds", "failed_windows", "bot_name")
+LIVE_PUBLIC_FIELDS = ("status", "detail", "connector", "platform", "started_at", "ended_at", "duration_seconds", "failed_windows", "bot_name", "stop_reason")
 
 
 def load_meeting(store, meeting_id, user, needed=MP.VIEW):

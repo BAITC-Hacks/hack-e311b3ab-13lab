@@ -114,6 +114,10 @@ class LiveSession:
             await self.stop_requested.wait()
         except asyncio.CancelledError:
             interrupted = True  # the server is shutting down: keep what was captured
+        except RuntimeError as error:
+            logger.warning("Live session could not start: %s", error)
+            self.stop_reason = self.stop_reason or str(error)
+            self.set_status("error", str(error))
         except Exception as error:
             logger.exception("Live session failed")
             self.stop_reason = self.stop_reason or f"Ошибка подключения ({type(error).__name__})"
@@ -147,7 +151,7 @@ class LiveSession:
                 target.write(chunk.pcm)
                 self.audio_seconds += chunk.seconds
                 self.last_audio = time.monotonic()
-                if self.status in ("joining", "waiting_audio", "lobby"):
+                if self.status in ("joining", "waiting_audio", "lobby", "joined"):
                     self.set_status("live")
                 for window in self.windower.feed(chunk.pcm):
                     self.windows.put_nowait(window)

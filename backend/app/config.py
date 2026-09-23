@@ -40,6 +40,7 @@ class Settings:
     bot_service_url: str = ""
     bot_token: str = ""
     bot_name: str = "HATTAMA.AI Секретарь"
+    bot_callback_base: str = "ws://backend:8000"
 
     @classmethod
     def from_env(cls):
@@ -75,4 +76,5 @@ class Settings:
             bot_service_url=os.getenv("BOT_SERVICE_URL", "").rstrip("/"),
             bot_token=os.getenv("BOT_TOKEN", ""),
             bot_name=os.getenv("BOT_NAME", "HATTAMA.AI Секретарь"),
+            bot_callback_base=os.getenv("BOT_CALLBACK_BASE", "ws://backend:8000").rstrip("/"),
         )

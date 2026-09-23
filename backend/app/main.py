@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from app import exports
 from app.access import load_meeting, present_meeting
 from app.live.manager import LiveManager
+from app.routes.bot import router as bot_router
 from app.routes.live import router as live_router
 from app.blobs import make_blob_store, media_type
 from app.config import Settings
@@ -123,6 +124,7 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
     live = LiveManager(store, settings, provider, blobs, schedule)
     app.state.live = live
     app.include_router(live_router)
+    app.include_router(bot_router)
 
     def active_user(user_id, message):
         user = store.get_user(user_id)

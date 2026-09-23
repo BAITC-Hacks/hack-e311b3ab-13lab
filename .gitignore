@@ -9,3 +9,7 @@ output/
 
 service.env
 *.log
+
+# Meeting bot sign-in sessions and troubleshooting screenshots
+secrets/
+bot-debug/
