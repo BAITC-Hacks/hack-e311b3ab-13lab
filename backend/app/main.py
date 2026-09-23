@@ -10,7 +10,6 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 
 from app import exports
 from app.blobs import make_blob_store, media_type
@@ -477,12 +476,5 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
                 if action.get("assignee_id") == user["id"]:
                     result.append({"meeting_id": meeting["id"], "meeting_title": meeting["title"], "meeting_date": meeting["meeting_date"], "action": action})
         return result
-
-    static_dir = Path(__file__).parent / "static"
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-    @app.get("/")
-    async def index():
-        return FileResponse(static_dir / "index.html")
 
     return app

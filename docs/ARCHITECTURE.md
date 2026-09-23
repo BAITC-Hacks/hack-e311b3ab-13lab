@@ -8,7 +8,8 @@
 
 ```mermaid
 flowchart LR
-    UI[Браузер секретаря] --> API[FastAPI]
+    UI[Браузер: React] --> Nginx[nginx]
+    Nginx --> API[FastAPI]
     API --> DB[(PostgreSQL или SQLite)]
     API --> Blobs[(MinIO: аудио и протоколы)]
     API --> Queue[Очередь одного процесса]
@@ -40,7 +41,7 @@ flowchart LR
 | `backend/app/pipeline.py` | ASR, сегментация, адаптер диаризации, извлечение и проверка |
 | `backend/app/deadlines.py` | Консервативное разрешение дат относительно даты встречи |
 | `backend/app/exports.py` | Экспорт протокола в DOCX, Markdown и PDF |
-| `backend/app/static/` | Интерфейс без внешних JS/CDN зависимостей |
+| `frontend/` | React-интерфейс без внешних CDN; права на кнопки берутся из `permissions` в ответе API, проверку выполняет backend |
 | `backend/scripts/smoke.py` | Воспроизводимая проверка реального сервиса |
 
 ## Состояния и сбои

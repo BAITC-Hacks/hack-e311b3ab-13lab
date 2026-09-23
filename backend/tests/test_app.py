@@ -87,8 +87,9 @@ class AuthTests(AppTestCase):
         self.assertEqual(self.client.get("/api/auth/me", headers={"Authorization": f"Bearer {response.json()['token']}"}).status_code, 200)
 
     def test_security_headers(self):
-        response = self.client.get("/")
+        response = self.client.get("/api/health")
         self.assertIn("default-src 'self'", response.headers["content-security-policy"])
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
         self.assertEqual(self.get("/api/meetings", "secretary").headers["cache-control"], "no-store")
 
 

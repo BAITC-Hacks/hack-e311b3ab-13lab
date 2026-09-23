@@ -1,8 +1,15 @@
 services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
   backend:
     build: ./backend
-    ports:
-      - "127.0.0.1:8000:8000"
     env_file: .env
     environment:
       DATABASE_URL: postgresql://qorytyn:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/qorytyn
@@ -14,6 +21,10 @@ services:
       DATA_DIR: /app/data
     volumes:
       - app-tmp:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 5s
+      retries: 20
     depends_on:
       postgres:
         condition: service_healthy
