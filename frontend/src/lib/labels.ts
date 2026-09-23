@@ -53,6 +53,9 @@ export const AUDIT_LABELS: Record<string, string> = {
   approved_copy_downloaded: 'Скачана утверждённая копия',
   audio_opened: 'Прослушивание записи',
   meeting_deleted: 'Удалено совещание',
+  user_registered: 'Регистрация',
+  registration_approved: 'Заявка одобрена',
+  registration_rejected: 'Заявка отклонена',
 }
 
 export type Tone = 'neutral' | 'progress' | 'review' | 'success' | 'danger'

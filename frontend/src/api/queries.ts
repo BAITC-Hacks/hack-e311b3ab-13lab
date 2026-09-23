@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ACTIVE_STATUSES } from '../lib/labels'
 import { getJson } from './client'
-import type { AuditEntry, DirectoryUser, Health, Meeting, MeetingSummary, MyAction, User } from './types'
+import type { AdminOverview, AuditEntry, DirectoryUser, Health, Meeting, MeetingSummary, MyAction, RegistrationMode, User } from './types'
 
 export const queryKeys = {
   health: ['health'] as const,
@@ -11,6 +11,8 @@ export const queryKeys = {
   users: ['users'] as const,
   audit: (meetingId: string, limit: number) => ['audit', meetingId, limit] as const,
   tasks: ['tasks'] as const,
+  registration: ['registration'] as const,
+  adminOverview: ['admin', 'overview'] as const,
 }
 
 export function useHealth() {
@@ -45,6 +47,14 @@ export function useAudit(meetingId: string, limit: number) {
   const params = new URLSearchParams({ limit: String(limit) })
   if (meetingId) params.set('meeting_id', meetingId)
   return useQuery({ queryKey: queryKeys.audit(meetingId, limit), queryFn: ({ signal }) => getJson<AuditEntry[]>(`/api/audit?${params}`, signal) })
+}
+
+export function useRegistrationMode() {
+  return useQuery({ queryKey: queryKeys.registration, queryFn: async ({ signal }) => (await getJson<{ mode: RegistrationMode }>('/api/auth/registration', signal)).mode, staleTime: 300_000 })
+}
+
+export function useAdminOverview() {
+  return useQuery({ queryKey: queryKeys.adminOverview, queryFn: ({ signal }) => getJson<AdminOverview>('/api/admin/overview', signal), refetchInterval: 30_000 })
 }
 
 export function useMyActions() {

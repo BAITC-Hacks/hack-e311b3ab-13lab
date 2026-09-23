@@ -25,6 +25,8 @@ export interface User {
   role_label: string
   active: boolean
   created_at: string
+  pending: boolean
+  last_login_at: string | null
   permissions: GlobalPermission[]
 }
 
@@ -119,6 +121,26 @@ export interface Health {
   provider_configured: boolean
   diarization_configured: boolean
   pdf_configured: boolean
+}
+
+export type RegistrationMode = 'approval' | 'open' | 'closed'
+
+export type RegistrationResponse = { status: 'pending' } | { status: 'active'; token: string; expires_at: number; user: User }
+
+export interface AdminOverview {
+  users: { total: number; active: number; pending: number; disabled: number; by_role: Record<Role, number> }
+  meetings: { total: number; by_status: Partial<Record<MeetingStatus, number>> }
+  system: {
+    database: string
+    storage: string
+    provider_configured: boolean
+    pdf_configured: boolean
+    diarization_configured: boolean
+    registration_mode: RegistrationMode
+    migrations: Array<{ id: string; applied_at: string }>
+  }
+  pending_registrations: User[]
+  recent_activity: AuditEntry[]
 }
 
 export interface LoginResponse {

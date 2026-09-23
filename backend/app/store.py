@@ -161,8 +161,8 @@ class Store:
         with self.engine.connect() as connection:
             return connection.execute(query).scalar_one()
 
-    def create_user(self, email, name, role, password):
-        user = {"id": uuid.uuid4().hex, "email": email.strip().lower(), "name": name.strip(), "role": str(role), "active": True, "created_at": now()}
+    def create_user(self, email, name, role, password, pending=False):
+        user = {"id": uuid.uuid4().hex, "email": email.strip().lower(), "name": name.strip(), "role": str(role), "active": not pending, "created_at": now(), "pending": pending, "last_login_at": None}
         try:
             with self.engine.begin() as connection:
                 connection.execute(insert(users).values(**user, password_hash=hash_password(password)))
@@ -189,6 +189,37 @@ class Store:
         with self.engine.connect() as connection:
             return dict(connection.execute(select(users.c.id, users.c.name)).fetchall())
 
+    def pending_users(self):
+        with self.engine.connect() as connection:
+            rows = connection.execute(select(*[users.c[field] for field in PUBLIC_USER_FIELDS]).where(users.c.pending.is_(True)).order_by(users.c.created_at)).fetchall()
+        return [_public_user(row) for row in rows]
+
+    def approve_user(self, user_id, role):
+        with self.engine.begin() as connection:
+            result = connection.execute(update(users).where(users.c.id == user_id, users.c.pending.is_(True)).values(pending=False, active=True, role=str(role)))
+        return self.get_user(user_id) if result.rowcount else None
+
+    def reject_user(self, user_id):
+        """Delete a pending registration. Accounts that were ever approved are never deleted."""
+        with self.engine.begin() as connection:
+            row = connection.execute(select(users.c.email).where(users.c.id == user_id, users.c.pending.is_(True))).first()
+            if row:
+                connection.execute(delete(users).where(users.c.id == user_id))
+        return row.email if row else None
+
+    def record_login(self, user_id):
+        with self.engine.begin() as connection:
+            connection.execute(update(users).where(users.c.id == user_id).values(last_login_at=now()))
+
+    def user_counts(self):
+        with self.engine.connect() as connection:
+            rows = connection.execute(select(users.c.role, users.c.active, users.c.pending, func.count()).group_by(users.c.role, users.c.active, users.c.pending)).fetchall()
+        return [{"role": role, "active": bool(active), "pending": bool(pending), "count": count} for role, active, pending, count in rows]
+
+    def meeting_counts(self):
+        with self.engine.connect() as connection:
+            return dict(connection.execute(select(meetings.c.status, func.count()).group_by(meetings.c.status)).fetchall())
+
     def update_user(self, user_id, name=None, role=None, active=None, password=None):
         values = {}
         if name is not None:
@@ -197,6 +228,8 @@ class Store:
             values["role"] = str(role)
         if active is not None:
             values["active"] = active
+            if active:
+                values["pending"] = False
         if password is not None:
             values["password_hash"] = hash_password(password)
         with self.engine.begin() as connection:
@@ -205,6 +238,13 @@ class Store:
             if password is not None or active is False:
                 connection.execute(delete(sessions).where(sessions.c.user_id == user_id))
         return self.get_user(user_id)
+
+    def migration_history(self):
+        from app.migrations import schema_migrations
+
+        with self.engine.connect() as connection:
+            rows = connection.execute(select(schema_migrations.c.id, schema_migrations.c.applied_at).order_by(schema_migrations.c.id)).fetchall()
+        return [{"id": migration_id, "applied_at": applied_at} for migration_id, applied_at in rows]
 
     # Sessions
 

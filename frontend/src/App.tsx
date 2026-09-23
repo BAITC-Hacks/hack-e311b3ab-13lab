@@ -1,17 +1,20 @@
 import { createBrowserRouter } from 'react-router'
 import { RequireAuth, RequirePermission } from './auth/guards'
 import { Layout } from './components/Layout'
+import { AdminPage } from './pages/AdminPage'
 import { AuditPage } from './pages/AuditPage'
 import { LoginPage } from './pages/LoginPage'
 import { MeetingPage } from './pages/meeting/MeetingPage'
 import { MeetingsPage } from './pages/MeetingsPage'
 import { NewMeetingPage } from './pages/NewMeetingPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { RegisterPage } from './pages/RegisterPage'
 import { TasksPage } from './pages/TasksPage'
 import { UsersPage } from './pages/UsersPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/register', element: <RegisterPage /> },
   {
     path: '/',
     element: (
@@ -31,6 +34,14 @@ export const router = createBrowserRouter([
       },
       { path: 'meetings/:id', element: <MeetingPage /> },
       { path: 'tasks', element: <TasksPage /> },
+      {
+        path: 'admin',
+        element: (
+          <RequirePermission permission="users:manage">
+            <AdminPage />
+          </RequirePermission>
+        ),
+      },
       {
         path: 'users',
         element: (

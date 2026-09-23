@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, MetaData, String, Table
+from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, MetaData, String, Table, false
 from sqlalchemy.dialects.postgresql import JSONB
 
 
@@ -23,6 +23,9 @@ users = Table(
     Column("password_hash", String(300), nullable=False),
     Column("active", Boolean, nullable=False, default=True),
     Column("created_at", String(40), nullable=False),
+    # Added by migration 0002: self-registered accounts waiting for an administrator.
+    Column("pending", Boolean, nullable=False, default=False, server_default=false()),
+    Column("last_login_at", String(40), nullable=True),
 )
 
 sessions = Table(
@@ -57,7 +60,7 @@ audit_log = Table(
     Column("detail", Document, nullable=False),
 )
 
-PUBLIC_USER_FIELDS = ("id", "email", "name", "role", "active", "created_at")
+PUBLIC_USER_FIELDS = ("id", "email", "name", "role", "active", "created_at", "pending", "last_login_at")
 
 
 def meeting_columns(meeting):

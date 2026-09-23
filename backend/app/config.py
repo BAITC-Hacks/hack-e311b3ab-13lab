@@ -29,6 +29,7 @@ class Settings:
     admin_name: str = "Администратор"
     pdf_font_path: str = ""
     pdf_font_bold_path: str = ""
+    registration_mode: str = "approval"
 
     @classmethod
     def from_env(cls):
@@ -53,4 +54,5 @@ class Settings:
             admin_name=os.getenv("ADMIN_NAME", "Администратор"),
             pdf_font_path=os.getenv("PDF_FONT_PATH", ""),
             pdf_font_bold_path=os.getenv("PDF_FONT_BOLD_PATH", ""),
+            registration_mode=os.getenv("REGISTRATION_MODE", "approval").strip().lower(),
         )

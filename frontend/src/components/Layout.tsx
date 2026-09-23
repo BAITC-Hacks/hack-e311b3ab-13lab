@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { ClipboardList, FilePlus2, KeyRound, LogOut, Menu, ScrollText, Users, Video, X } from 'lucide-react'
+import { ClipboardList, FilePlus2, KeyRound, LayoutDashboard, LogOut, Menu, ScrollText, Users, Video, X } from 'lucide-react'
 import { useState, type ComponentType } from 'react'
 import { NavLink, Outlet } from 'react-router'
 import { useHealth } from '../api/queries'
@@ -16,6 +16,7 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
+  { to: '/admin', label: 'Админ-панель', icon: LayoutDashboard, permission: 'users:manage' },
   { to: '/', label: 'Совещания', icon: Video, end: true },
   { to: '/meetings/new', label: 'Новое совещание', icon: FilePlus2, permission: 'meetings:create' },
   { to: '/tasks', label: 'Мои поручения', icon: ClipboardList },

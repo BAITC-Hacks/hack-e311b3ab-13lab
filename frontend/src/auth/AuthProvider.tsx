@@ -37,13 +37,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient],
   )
 
-  const login = useCallback(async (email: string, password: string) => {
-    const response = await sendJson<LoginResponse>('/api/auth/login', 'POST', { email, password })
-    setToken(response.token)
-    setUser(response.user)
+  const acceptSession = useCallback((token: string, current: User) => {
+    setToken(token)
+    setUser(current)
     setExpired(false)
     setStatus('authenticated')
   }, [])
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const response = await sendJson<LoginResponse>('/api/auth/login', 'POST', { email, password })
+      acceptSession(response.token, response.user)
+      return response.user
+    },
+    [acceptSession],
+  )
 
   const logout = useCallback(async () => {
     await sendJson('/api/auth/logout', 'POST').catch(() => undefined)
@@ -55,6 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const can = useCallback((permission: GlobalPermission) => Boolean(user?.permissions.includes(permission)), [user])
 
-  const value = useMemo<AuthState>(() => ({ user, status, expired, login, logout, can }), [user, status, expired, login, logout, can])
+  const value = useMemo<AuthState>(() => ({ user, status, expired, login, acceptSession, logout, can }), [user, status, expired, login, acceptSession, logout, can])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from app import exports
 from app.blobs import make_blob_store, media_type
 from app.config import Settings
-from app.models import ACTIVE_STATUSES, REVIEWABLE_STATUSES, ActionUpdate, Approval, LoginRequest, PasswordChange, People, Review, UserCreate, UserUpdate
+from app.models import ACTIVE_STATUSES, REVIEWABLE_STATUSES, ActionUpdate, Approval, LoginRequest, PasswordChange, People, Registration, RegistrationApproval, Review, UserCreate, UserUpdate
 from app.pipeline import Provider, run_pipeline
 from app.rbac import ROLE_LABELS, MeetingPermission as MP, Permission, Role, assignee_ids, current_user, meeting_permissions, require, role_permissions
 from app.security import DUMMY_HASH, verify_password
@@ -24,6 +24,7 @@ from app.store import Store, audio_key, new_meeting, now
 logger = logging.getLogger("hattama")
 
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".mp4"}
+REGISTRATION_MODES = {"approval", "open", "closed"}
 INTERRUPTED = "Обработка прервана перезапуском сервера. Нажмите «Повторить»."
 SUMMARY_FIELDS = ("id", "title", "meeting_date", "status", "created_at", "updated_at", "version", "error", "created_by", "chair_id", "participant_ids", "approved_at", "approved_by")
 CONTENT_FIELDS = ("transcript", "segments", "analysis", "speaker_names")
@@ -72,6 +73,10 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
     tasks = set()
     semaphore = asyncio.Semaphore(1)
     throttle = LoginThrottle()
+    registration_throttle = LoginThrottle(limit=5, window_seconds=3600)
+    registration_mode = settings.registration_mode if settings.registration_mode in REGISTRATION_MODES else "closed"
+    if registration_mode != settings.registration_mode:
+        logger.warning("Неизвестный REGISTRATION_MODE=%r: регистрация отключена", settings.registration_mode)
 
     @asynccontextmanager
     async def lifespan(application):
@@ -150,15 +155,42 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
             raise HTTPException(429, "Слишком много неудачных попыток. Повторите через 15 минут.")
         found = store.user_credentials(email)
         valid = await asyncio.to_thread(verify_password, payload.password, found[1] if found else DUMMY_HASH)
+        if found and valid and found[0]["pending"]:
+            raise HTTPException(403, "Учётная запись ожидает подтверждения администратора")
         if not (found and valid and found[0]["active"]):
             throttle.fail(key)
             store.audit("login_failed", email=email)
             raise HTTPException(401, "Неверный email или пароль")
         throttle.reset(key)
         user = found[0]
+        store.record_login(user["id"])
         token, expires_at = store.create_session(user["id"])
         store.audit("login", user)
         return {"token": token, "expires_at": expires_at, "user": describe_user(user)}
+
+    @app.get("/api/auth/registration")
+    async def registration_info():
+        return {"mode": registration_mode}
+
+    @app.post("/api/auth/register", status_code=201)
+    async def register(payload: Registration, request: Request):
+        if registration_mode == "closed":
+            raise HTTPException(403, "Регистрация отключена. Обратитесь к администратору.")
+        key = request.client.host if request.client else ""
+        if registration_throttle.blocked(key):
+            raise HTTPException(429, "Слишком много регистраций с этого адреса. Повторите позже.")
+        registration_throttle.fail(key)
+        pending = registration_mode == "approval"
+        try:
+            user = await asyncio.to_thread(store.create_user, payload.email, payload.name, Role.PARTICIPANT, payload.password, pending)
+        except ValueError:
+            raise HTTPException(409, "Пользователь с таким email уже зарегистрирован")
+        store.audit("user_registered", user, pending=pending)
+        if pending:
+            return {"status": "pending"}
+        store.record_login(user["id"])
+        token, expires_at = store.create_session(user["id"])
+        return {"status": "active", "token": token, "expires_at": expires_at, "user": describe_user(user)}
 
     @app.post("/api/auth/logout", status_code=204)
     async def logout(request: Request, user=Depends(current_user)):
@@ -211,6 +243,50 @@ def create_app(settings=None, provider=None, store=None, blobs=None):
         changed = sorted(field for field, value in payload.model_dump(exclude_none=True).items())
         store.audit("user_updated", user, target=updated["email"], fields=changed, role=updated["role"], active=updated["active"])
         return describe_user(updated)
+
+    # Admin panel
+
+    @app.get("/api/admin/overview")
+    async def admin_overview(user=Depends(require(Permission.MANAGE_USERS))):
+        counts = store.user_counts()
+        by_status = store.meeting_counts()
+        return {
+            "users": {
+                "total": sum(item["count"] for item in counts),
+                "active": sum(item["count"] for item in counts if item["active"]),
+                "pending": sum(item["count"] for item in counts if item["pending"]),
+                "disabled": sum(item["count"] for item in counts if not item["active"] and not item["pending"]),
+                "by_role": {role: sum(item["count"] for item in counts if item["role"] == role and item["active"]) for role in Role},
+            },
+            "meetings": {"total": sum(by_status.values()), "by_status": by_status},
+            "system": {
+                "database": store.backend,
+                "storage": blobs.kind,
+                "provider_configured": bool(settings.api_key),
+                "pdf_configured": bool(fonts),
+                "diarization_configured": bool(settings.diarization_model_path),
+                "registration_mode": registration_mode,
+                "migrations": store.migration_history(),
+            },
+            "pending_registrations": [describe_user(item) for item in store.pending_users()],
+            "recent_activity": store.audit_entries(limit=8),
+        }
+
+    @app.post("/api/admin/registrations/{user_id}/approve")
+    async def approve_registration(user_id: str, payload: RegistrationApproval, user=Depends(require(Permission.MANAGE_USERS))):
+        approved = store.approve_user(user_id, payload.role)
+        if not approved:
+            raise HTTPException(404, "Заявка не найдена или уже обработана")
+        store.audit("registration_approved", user, target=approved["email"], role=approved["role"])
+        return describe_user(approved)
+
+    @app.delete("/api/admin/registrations/{user_id}", status_code=204)
+    async def reject_registration(user_id: str, user=Depends(require(Permission.MANAGE_USERS))):
+        email = store.reject_user(user_id)
+        if not email:
+            raise HTTPException(404, "Заявка не найдена или уже обработана")
+        store.audit("registration_rejected", user, target=email)
+        return Response(status_code=204)
 
     # Audit log
 

@@ -91,6 +91,18 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=200)
 
 
+class Registration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(max_length=254, pattern=EMAIL_PATTERN)
+    name: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=200)
+
+
+class RegistrationApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Role
+
+
 class UserUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=200)

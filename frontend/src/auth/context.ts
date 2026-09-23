@@ -5,7 +5,8 @@ export interface AuthState {
   user: User | null
   status: 'loading' | 'anonymous' | 'authenticated'
   expired: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<User>
+  acceptSession: (token: string, user: User) => void
   logout: () => Promise<void>
   can: (permission: GlobalPermission) => boolean
 }

@@ -56,19 +56,21 @@ export function TasksPage() {
                     {deadlineLabel(action)} {overdue && <Badge tone="danger">Просрочено</Badge>}
                   </p>
                 </div>
-                <Select
-                  aria-label="Статус поручения"
-                  className="mt-0 w-40 py-1.5"
-                  value={action.status}
-                  disabled={update.isPending || !action.id}
-                  onChange={(event) => action.id && update.mutate({ meetingId: meeting_id, actionId: action.id, status: event.target.value as ActionStatus })}
-                >
-                  {Object.entries(ACTION_STATUS_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
+                <div className="w-44">
+                  <Select
+                    aria-label="Статус поручения"
+                    className="mt-0 py-1.5"
+                    value={action.status}
+                    disabled={update.isPending || !action.id}
+                    onChange={(event) => action.id && update.mutate({ meetingId: meeting_id, actionId: action.id, status: event.target.value as ActionStatus })}
+                  >
+                    {Object.entries(ACTION_STATUS_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
               </div>
             </Card>
           )

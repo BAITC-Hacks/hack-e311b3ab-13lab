@@ -42,8 +42,19 @@ def initial_schema(connection):
     metadata.create_all(connection, tables=[table for table in metadata.sorted_tables if table.name != "schema_migrations"])
 
 
+def user_registration(connection):
+    """Add users.pending and users.last_login_at for self-registration and the admin panel."""
+    existing = _columns(connection, "users")
+    default_false = "false" if connection.dialect.name == "postgresql" else "0"
+    if "pending" not in existing:
+        connection.execute(text(f"ALTER TABLE users ADD COLUMN pending BOOLEAN NOT NULL DEFAULT {default_false}"))
+    if "last_login_at" not in existing:
+        connection.execute(text("ALTER TABLE users ADD COLUMN last_login_at VARCHAR(40)"))
+
+
 MIGRATIONS = [
     ("0001_initial_schema", initial_schema),
+    ("0002_user_registration", user_registration),
 ]
 
 

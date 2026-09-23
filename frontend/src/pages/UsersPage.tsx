@@ -8,7 +8,7 @@ import { useAuth } from '../auth/context'
 import { Dialog } from '../components/Dialog'
 import { useToast } from '../components/toast-context'
 import { Badge, Button, Card, Field, Input, Notice, PageHeader, Select, Spinner } from '../components/ui'
-import { formatDate } from '../lib/format'
+import { formatDate, formatDateTime } from '../lib/format'
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '../lib/labels'
 
 const ROLES = Object.keys(ROLE_LABELS) as Role[]
@@ -57,10 +57,10 @@ export function UsersPage() {
                     <tr key={user.id} className={user.active ? '' : 'text-ink-soft'}>
                       <td className="px-5 py-3">
                         <p className="font-semibold">
-                          {user.name} {user.id === me?.id && <Badge>вы</Badge>}
+                          {user.name} {user.id === me?.id && <Badge>вы</Badge>} {user.pending && <Badge tone="review">Ожидает подтверждения</Badge>}
                         </p>
                         <p className="text-xs text-ink-muted">
-                          {user.email} · с {formatDate(user.created_at)}
+                          {user.email} · с {formatDate(user.created_at)} · {user.last_login_at ? `вход ${formatDateTime(user.last_login_at)}` : 'ещё не входил'}
                         </p>
                       </td>
                       <td className="px-5 py-3">
@@ -75,7 +75,7 @@ export function UsersPage() {
                       <td className="px-5 py-3">
                         <label className="flex items-center gap-2">
                           <input type="checkbox" className="size-4 accent-forest-700" checked={user.active} disabled={update.isPending} onChange={(event) => update.mutate({ id: user.id, active: event.target.checked })} />
-                          {user.active ? 'Активен' : 'Отключён'}
+                          {user.active ? 'Активен' : user.pending ? 'Заявка' : 'Отключён'}
                         </label>
                       </td>
                       <td className="px-5 py-3 text-right">
